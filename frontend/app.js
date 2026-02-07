@@ -305,7 +305,21 @@ async function consumeSseResponse(response, handlers) {
 
   while (true) {
     const { value, done } = await reader.read();
-    if (done) break;
+    if (done) {
+      // Flush any trailing partial SSE block if the stream ended without \n\n.
+      const trailing = buffer.replace(/\r/g, "").trim();
+      if (trailing.length > 0) {
+        const parsed = parseSseBlock(trailing);
+        const fn = handlers[parsed.event];
+        if (fn) {
+          const maybePromise = fn(parsed.data);
+          if (maybePromise && typeof maybePromise.then === "function") {
+            await maybePromise;
+          }
+        }
+      }
+      break;
+    }
     buffer += decoder.decode(value, { stream: true });
     buffer = buffer.replace(/\r/g, "");
     let splitIdx = buffer.indexOf("\n\n");

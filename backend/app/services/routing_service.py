@@ -95,6 +95,8 @@ def _emit_progress(
         return
     try:
         progress_callback(event, payload)
+        # Yield briefly so the stream thread can flush events during CPU-heavy work.
+        time.sleep(0.001)
     except Exception:
         # Streaming/progress is best-effort and should never break route computation.
         return
@@ -488,8 +490,6 @@ class RoutingService:
                         "progress_pct": round(((i + 1) / n) * 100.0, 1),
                     },
                 )
-                if progress_callback is not None:
-                    time.sleep(0.001)
 
             should_preview_refine = (
                 i == 0 or i == n - 1 or (i + 1) % refine_preview_step == 0
@@ -524,8 +524,6 @@ class RoutingService:
                             "route": [{"lat": lat, "lon": lon} for lat, lon in live_route],
                         },
                     )
-                    if progress_callback is not None:
-                        time.sleep(0.001)
 
         complete = nx.Graph()
         for i in range(n):
@@ -554,7 +552,6 @@ class RoutingService:
 
         total_candidates = len(candidates)
         report_step = max(1, total_candidates // 10)
-        preview_step = max(1, total_candidates // 60)
         best_update_count = 0
         _emit_progress(
             progress_callback,
@@ -588,7 +585,7 @@ class RoutingService:
                 best_update_count += 1
                 is_best = True
 
-            if idx == 1 or idx == total_candidates or idx % preview_step == 0 or is_best:
+            if idx == 1 or idx == total_candidates or is_best:
                 preview_route = [points[i] for i in preview_idx if 0 <= i < n]
                 if len(preview_route) >= 2:
                     _emit_progress(
@@ -606,9 +603,6 @@ class RoutingService:
                             "route": [{"lat": lat, "lon": lon} for lat, lon in preview_route],
                         },
                     )
-                    if progress_callback is not None:
-                        # Yield briefly so stream thread can flush previews during CPU-heavy search.
-                        time.sleep(0.001)
             if idx == 1 or idx == total_candidates or idx % report_step == 0:
                 _emit_progress(
                     progress_callback,
@@ -643,8 +637,6 @@ class RoutingService:
                     "route": [{"lat": lat, "lon": lon} for lat, lon in final_preview_route],
                 },
             )
-            if progress_callback is not None:
-                time.sleep(0.001)
 
         ordered = [points[i] for i in best_tour]
         if close_loop and not same_point(ordered[-1], ordered[0]):
@@ -723,8 +715,6 @@ class RoutingService:
                         "route": [{"lat": lat, "lon": lon} for lat, lon in sampled_preview],
                     },
                 )
-                if progress_callback is not None:
-                    time.sleep(0.001)
 
         if not full_nodes:
             return waypoint_loop[:], path_length_m(waypoint_loop)
@@ -1024,43 +1014,6 @@ class RoutingService:
             {"phase": "graph_loading", "message": "Laster veinett og forbereder beregning"},
         )
         selected_clinics = [self._clinic_by_id[cid] for cid in canonical_ids]
-
-        # Emit an immediate coarse preview before graph loading/shortest-path work.
-        seed_points = [c.point for c in selected_clinics]
-        if len(seed_points) >= 2:
-            n_seed = len(seed_points)
-            approx = [[0.0] * n_seed for _ in range(n_seed)]
-            for i in range(n_seed):
-                for j in range(i + 1, n_seed):
-                    d_approx = haversine_m(seed_points[i], seed_points[j]) * 1.3
-                    approx[i][j] = d_approx
-                    approx[j][i] = d_approx
-            seed_tour = _nearest_neighbor_tour(0, approx)
-            seed_rounds = max(5, min(18, tor // 10))
-            if close_loop:
-                seed_tour = _two_opt_cycle(seed_tour, approx, max_rounds=seed_rounds)
-                seed_tour = _rotate_tour_start(seed_tour, 0)
-                seed_idx = seed_tour + [seed_tour[0]]
-                seed_cost = _cycle_cost(seed_tour, approx)
-            else:
-                seed_tour = _two_opt_path(seed_tour, approx, max_rounds=seed_rounds)
-                seed_idx = seed_tour[:]
-                seed_cost = _path_cost(seed_tour, approx)
-            seed_route = [seed_points[i] for i in seed_idx if 0 <= i < n_seed]
-            if len(seed_route) >= 2:
-                _emit_progress(
-                    progress_callback,
-                    "preview",
-                    {
-                        "phase": "graph_loading",
-                        "kind": "pregraph",
-                        "progress_pct": 0.0,
-                        "distance_km": round(seed_cost / 1000.0, 3),
-                        "route": [{"lat": lat, "lon": lon} for lat, lon in seed_route],
-                    },
-                )
-                if progress_callback is not None:
-                    time.sleep(0.001)
 
         graph = self._ensure_graph()
         waypoint_loop = self._optimize_waypoint_loop(
