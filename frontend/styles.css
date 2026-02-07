@@ -58,9 +58,18 @@ body {
 
 .actions {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
+}
+
+.action-group {
+  display: flex;
+  gap: 8px;
+}
+
+.selection-actions {
+  flex-direction: column;
 }
 
 .close-loop-toggle {
