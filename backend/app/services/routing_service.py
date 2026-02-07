@@ -12,12 +12,13 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import requests
 
 
 Coordinate = tuple[float, float]  # (lat, lon)
+ProgressCallback = Callable[[str, dict[str, Any]], None]
 
 
 @dataclass
@@ -85,6 +86,18 @@ def _xml_escape(text: str) -> str:
         .replace('"', "&quot;")
         .replace("'", "&apos;")
     )
+
+
+def _emit_progress(
+    progress_callback: ProgressCallback | None, event: str, payload: dict[str, Any]
+) -> None:
+    if progress_callback is None:
+        return
+    try:
+        progress_callback(event, payload)
+    except Exception:
+        # Streaming/progress is best-effort and should never break route computation.
+        return
 
 
 def _rotate_tour_start(tour: list[int], start_idx: int = 0) -> list[int]:
@@ -372,6 +385,7 @@ class RoutingService:
         random_starts: int,
         two_opt_rounds: int,
         close_loop: bool,
+        progress_callback: ProgressCallback | None = None,
     ) -> list[Coordinate]:
         import networkx as nx
         self._ensure_clinic_nodes(graph)
@@ -424,24 +438,94 @@ class RoutingService:
             rng.shuffle(base)
             candidates.append([0] + base[:])
 
+        total_candidates = len(candidates)
+        report_step = max(1, total_candidates // 10)
+        preview_step = max(1, total_candidates // 60)
+        best_update_count = 0
+        _emit_progress(
+            progress_callback,
+            "status",
+            {
+                "phase": "optimizing",
+                "message": "Optimaliserer rekkefølge mellom punkter",
+                "total_candidates": total_candidates,
+            },
+        )
+
         best_tour: list[int] | None = None
         best_cost = float("inf")
-        for cand in candidates:
+        for idx, cand in enumerate(candidates, start=1):
             if len(cand) != n or len(set(cand)) != n:
                 continue
             if close_loop:
                 improved = _two_opt_cycle(cand, dist, max_rounds=two_opt_rounds)
                 improved = _rotate_tour_start(improved, 0)
                 cost = _cycle_cost(improved, dist)
+                preview_idx = improved + [improved[0]] if improved else []
             else:
                 improved = _two_opt_path(cand, dist, max_rounds=two_opt_rounds)
                 cost = _path_cost(improved, dist)
+                preview_idx = improved[:]
+
+            is_best = False
             if cost < best_cost:
                 best_cost = cost
                 best_tour = improved
+                best_update_count += 1
+                is_best = True
+
+            if idx == 1 or idx == total_candidates or idx % preview_step == 0 or is_best:
+                preview_route = [points[i] for i in preview_idx if 0 <= i < n]
+                if len(preview_route) >= 2:
+                    _emit_progress(
+                        progress_callback,
+                        "preview",
+                        {
+                            "phase": "optimizing",
+                            "kind": "candidate",
+                            "candidate_index": idx,
+                            "total_candidates": total_candidates,
+                            "progress_pct": round((idx / total_candidates) * 100.0, 1),
+                            "is_best": is_best,
+                            "best_update_count": best_update_count,
+                            "distance_km": round(cost / 1000.0, 3),
+                            "route": [{"lat": lat, "lon": lon} for lat, lon in preview_route],
+                        },
+                    )
+            if idx == 1 or idx == total_candidates or idx % report_step == 0:
+                _emit_progress(
+                    progress_callback,
+                    "status",
+                    {
+                        "phase": "optimizing",
+                        "message": f"Optimalisering {idx}/{total_candidates}",
+                        "current_candidate": idx,
+                        "total_candidates": total_candidates,
+                        "progress_pct": round((idx / total_candidates) * 100.0, 1),
+                    },
+                )
 
         if best_tour is None:
             best_tour = _nearest_neighbor_tour(0, dist)
+
+        final_preview_idx = best_tour + [best_tour[0]] if close_loop else best_tour[:]
+        final_preview_route = [points[i] for i in final_preview_idx if 0 <= i < n]
+        if len(final_preview_route) >= 2:
+            _emit_progress(
+                progress_callback,
+                "preview",
+                {
+                    "phase": "optimizing",
+                    "kind": "best_waypoint_order",
+                    "candidate_index": total_candidates,
+                    "total_candidates": total_candidates,
+                    "progress_pct": 100.0,
+                    "is_best": True,
+                    "best_update_count": best_update_count,
+                    "distance_km": round(best_cost / 1000.0, 3),
+                    "route": [{"lat": lat, "lon": lon} for lat, lon in final_preview_route],
+                },
+            )
 
         ordered = [points[i] for i in best_tour]
         if close_loop and not same_point(ordered[-1], ordered[0]):
@@ -456,7 +540,10 @@ class RoutingService:
         return float(min(lengths)) if lengths else 0.0
 
     def _expand_on_walk_graph(
-        self, graph, waypoint_loop: list[Coordinate]
+        self,
+        graph,
+        waypoint_loop: list[Coordinate],
+        progress_callback: ProgressCallback | None = None,
     ) -> tuple[list[Coordinate], float]:
         import osmnx as ox
 
@@ -469,6 +556,17 @@ class RoutingService:
 
         full_nodes: list[int] = []
         total_len = 0.0
+        total_segments = len(node_ids) - 1
+        report_step = max(1, total_segments // 12)
+        _emit_progress(
+            progress_callback,
+            "status",
+            {
+                "phase": "building_path",
+                "message": "Tracer rute langs gangveier",
+                "total_segments": total_segments,
+            },
+        )
         for i in range(len(node_ids) - 1):
             u = node_ids[i]
             v = node_ids[i + 1]
@@ -484,11 +582,31 @@ class RoutingService:
             else:
                 full_nodes.extend(seg)
 
+            for j in range(len(seg) - 1):
+                total_len += self._edge_length_m(graph, seg[j], seg[j + 1])
+
+            should_report = i == 0 or i == total_segments - 1 or (i + 1) % report_step == 0
+            if should_report:
+                preview_route = [
+                    (float(graph.nodes[n]["y"]), float(graph.nodes[n]["x"])) for n in full_nodes
+                ]
+                sampled_preview = self._sample_route(preview_route, max_points=380)
+                _emit_progress(
+                    progress_callback,
+                    "preview",
+                    {
+                        "phase": "building_path",
+                        "kind": "network_progress",
+                        "segment": i + 1,
+                        "total_segments": total_segments,
+                        "progress_pct": round(((i + 1) / total_segments) * 100.0, 1),
+                        "distance_km": round(total_len / 1000.0, 3),
+                        "route": [{"lat": lat, "lon": lon} for lat, lon in sampled_preview],
+                    },
+                )
+
         if not full_nodes:
             return waypoint_loop[:], path_length_m(waypoint_loop)
-
-        for i in range(len(full_nodes) - 1):
-            total_len += self._edge_length_m(graph, full_nodes[i], full_nodes[i + 1])
         road_path = [(float(graph.nodes[n]["y"]), float(graph.nodes[n]["x"])) for n in full_nodes]
         return road_path, total_len
 
@@ -737,6 +855,7 @@ class RoutingService:
         random_starts: int | None = None,
         two_opt_rounds: int | None = None,
         close_loop: bool = False,
+        progress_callback: ProgressCallback | None = None,
     ) -> dict[str, Any]:
         selected_ids = list(dict.fromkeys(clinic_ids))
         if len(selected_ids) < 2:
@@ -755,6 +874,11 @@ class RoutingService:
 
         cached = self._get_cached_memory(key)
         if cached is not None:
+            _emit_progress(
+                progress_callback,
+                "status",
+                {"phase": "cache_hit", "layer": "memory", "message": "Rute funnet i minne-cache"},
+            )
             self._register_cache_access(
                 key, len(canonical_ids), rs, tor, "memory", force_flush=False
             )
@@ -762,12 +886,22 @@ class RoutingService:
 
         cached = self._get_cached_disk(key)
         if cached is not None:
+            _emit_progress(
+                progress_callback,
+                "status",
+                {"phase": "cache_hit", "layer": "disk", "message": "Rute funnet i disk-cache"},
+            )
             self._set_cached_memory(key, cached)
             self._register_cache_access(
                 key, len(canonical_ids), rs, tor, "disk", force_flush=False
             )
             return cached
 
+        _emit_progress(
+            progress_callback,
+            "status",
+            {"phase": "graph_loading", "message": "Laster veinett og forbereder beregning"},
+        )
         graph = self._ensure_graph()
         selected_clinics = [self._clinic_by_id[cid] for cid in canonical_ids]
         waypoint_loop = self._optimize_waypoint_loop(
@@ -776,8 +910,16 @@ class RoutingService:
             random_starts=rs,
             two_opt_rounds=tor,
             close_loop=close_loop,
+            progress_callback=progress_callback,
         )
-        road_path, road_distance_m = self._expand_on_walk_graph(graph, waypoint_loop)
+        road_path, road_distance_m = self._expand_on_walk_graph(
+            graph, waypoint_loop, progress_callback=progress_callback
+        )
+        _emit_progress(
+            progress_callback,
+            "status",
+            {"phase": "elevation", "message": "Henter høydeprofil"},
+        )
         profile, elev_source, elevation_gain_m, elevation_loss_m = self._build_profile(road_path)
 
         payload = {
@@ -796,6 +938,15 @@ class RoutingService:
         self._set_cached_memory(key, payload)
         self._set_cached_disk(key, payload)
         self._register_cache_access(key, len(canonical_ids), rs, tor, "computed", force_flush=True)
+        _emit_progress(
+            progress_callback,
+            "status",
+            {
+                "phase": "done",
+                "message": "Rute ferdig beregnet",
+                "distance_km": payload["distance_km"],
+            },
+        )
         return payload
 
     def build_gpx(
