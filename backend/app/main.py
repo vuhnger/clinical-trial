@@ -101,7 +101,12 @@ def route_stream(payload: RouteRequest) -> StreamingResponse:
 
     def event_stream():
         while True:
-            item = events.get()
+            try:
+                item = events.get(timeout=0.5)
+            except queue.Empty:
+                # Keep-alive ping helps proxies/browsers flush incremental chunks.
+                yield ": ping\n\n"
+                continue
             if item is None:
                 break
             event, data = item

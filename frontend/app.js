@@ -164,21 +164,27 @@ function clearRoute() {
   drawHeightProfile([], 0);
 }
 
-function drawRoute(routePoints, isPreview = false) {
-  if (state.routeLayer) {
-    map.removeLayer(state.routeLayer);
-  }
-  const latlngs = routePoints.map((p) => [p.lat, p.lon]);
-  if (latlngs.length === 0) {
-    return;
-  }
-  state.routeLayer = L.polyline(latlngs, {
+function routeStyle(isPreview) {
+  return {
     color: "#75D0C5",
     weight: isPreview ? 3 : 4,
     opacity: isPreview ? 0.75 : 0.95,
     dashArray: isPreview ? "8 8" : null,
     lineJoin: "round",
-  }).addTo(map);
+  };
+}
+
+function drawRoute(routePoints, isPreview = false) {
+  const latlngs = routePoints.map((p) => [p.lat, p.lon]);
+  if (latlngs.length === 0) {
+    return;
+  }
+  if (!state.routeLayer) {
+    state.routeLayer = L.polyline(latlngs, routeStyle(isPreview)).addTo(map);
+  } else {
+    state.routeLayer.setLatLngs(latlngs);
+    state.routeLayer.setStyle(routeStyle(isPreview));
+  }
   if (isPreview) {
     if (!state.previewActive) {
       map.fitBounds(state.routeLayer.getBounds(), { padding: [28, 28] });
@@ -188,6 +194,12 @@ function drawRoute(routePoints, isPreview = false) {
     state.previewActive = false;
     map.fitBounds(state.routeLayer.getBounds(), { padding: [28, 28] });
   }
+}
+
+async function yieldToBrowser() {
+  await new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
 }
 
 function calculateElevationGain(profile, minStepM = 2) {
@@ -289,6 +301,7 @@ async function consumeSseResponse(response, handlers) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let previewEventsSinceYield = 0;
 
   while (true) {
     const { value, done } = await reader.read();
@@ -302,7 +315,19 @@ async function consumeSseResponse(response, handlers) {
       if (block.length > 0) {
         const parsed = parseSseBlock(block);
         const fn = handlers[parsed.event];
-        if (fn) fn(parsed.data);
+        if (fn) {
+          const maybePromise = fn(parsed.data);
+          if (maybePromise && typeof maybePromise.then === "function") {
+            await maybePromise;
+          }
+        }
+        if (parsed.event === "preview") {
+          previewEventsSinceYield += 1;
+          if (previewEventsSinceYield >= 2) {
+            previewEventsSinceYield = 0;
+            await yieldToBrowser();
+          }
+        }
       }
       splitIdx = buffer.indexOf("\n\n");
     }

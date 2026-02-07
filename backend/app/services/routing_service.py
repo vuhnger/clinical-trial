@@ -405,20 +405,134 @@ class RoutingService:
             return [points[0], points[0]] if close_loop else [points[0]]
 
         n = len(points)
-        dist = [[0.0] * n for _ in range(n)]
+        approx_dist = [[0.0] * n for _ in range(n)]
+        for i in range(n):
+            for j in range(i + 1, n):
+                d_approx = haversine_m(points[i], points[j]) * 1.35
+                approx_dist[i][j] = d_approx
+                approx_dist[j][i] = d_approx
+
+        # Immediate visual bootstrap so clients can draw a route before heavy graph distances finish.
+        bootstrap_rounds = max(6, min(24, two_opt_rounds // 8))
+        bootstrap_tour = _nearest_neighbor_tour(0, approx_dist)
+        if close_loop:
+            bootstrap_tour = _two_opt_cycle(
+                bootstrap_tour, approx_dist, max_rounds=bootstrap_rounds
+            )
+            bootstrap_tour = _rotate_tour_start(bootstrap_tour, 0)
+            bootstrap_idx = bootstrap_tour + [bootstrap_tour[0]]
+            bootstrap_cost = _cycle_cost(bootstrap_tour, approx_dist)
+        else:
+            bootstrap_tour = _two_opt_path(
+                bootstrap_tour, approx_dist, max_rounds=bootstrap_rounds
+            )
+            bootstrap_idx = bootstrap_tour[:]
+            bootstrap_cost = _path_cost(bootstrap_tour, approx_dist)
+        bootstrap_route = [points[i] for i in bootstrap_idx if 0 <= i < n]
+        if len(bootstrap_route) >= 2:
+            _emit_progress(
+                progress_callback,
+                "preview",
+                {
+                    "phase": "distance_matrix",
+                    "kind": "bootstrap",
+                    "progress_pct": 0.0,
+                    "distance_km": round(bootstrap_cost / 1000.0, 3),
+                    "route": [{"lat": lat, "lon": lon} for lat, lon in bootstrap_route],
+                },
+            )
+
+        _emit_progress(
+            progress_callback,
+            "status",
+            {
+                "phase": "distance_matrix",
+                "message": "Bygger veinett-distanser mellom punkter",
+                "sources_total": n,
+            },
+        )
+
+        # Start from approx distances; progressively replace rows with exact shortest-path lengths.
+        dist = [row[:] for row in approx_dist]
+        source_report_step = max(1, n // 8)
+        refine_preview_step = max(1, n // 6)
+        refine_rounds = max(4, min(14, two_opt_rounds // 12))
+        for i in range(n):
+            ni = snapped_nodes[i]
+            try:
+                lengths = nx.single_source_dijkstra_path_length(graph, ni, weight="length")
+            except Exception:
+                lengths = {}
+
+            for j in range(i + 1, n):
+                nj = snapped_nodes[j]
+                d = float(lengths.get(nj, 0.0))
+                if d <= 0.0 and ni != nj:
+                    d = approx_dist[i][j]
+                dist[i][j] = d
+                dist[j][i] = d
+                with self._routing_cache_lock:
+                    self._node_distance_cache[(ni, nj)] = d
+                    self._node_distance_cache[(nj, ni)] = d
+
+            should_report = i == 0 or i == n - 1 or (i + 1) % source_report_step == 0
+            if should_report:
+                _emit_progress(
+                    progress_callback,
+                    "status",
+                    {
+                        "phase": "distance_matrix",
+                        "message": f"Beregner veinett-distanser {i + 1}/{n}",
+                        "sources_done": i + 1,
+                        "sources_total": n,
+                        "progress_pct": round(((i + 1) / n) * 100.0, 1),
+                    },
+                )
+                if progress_callback is not None:
+                    time.sleep(0.001)
+
+            should_preview_refine = (
+                i == 0 or i == n - 1 or (i + 1) % refine_preview_step == 0
+            )
+            if should_preview_refine:
+                live_tour = _nearest_neighbor_tour(0, dist)
+                if close_loop:
+                    live_tour = _two_opt_cycle(
+                        live_tour, dist, max_rounds=refine_rounds
+                    )
+                    live_tour = _rotate_tour_start(live_tour, 0)
+                    live_idx = live_tour + [live_tour[0]]
+                    live_cost = _cycle_cost(live_tour, dist)
+                else:
+                    live_tour = _two_opt_path(
+                        live_tour, dist, max_rounds=refine_rounds
+                    )
+                    live_idx = live_tour[:]
+                    live_cost = _path_cost(live_tour, dist)
+                live_route = [points[k] for k in live_idx if 0 <= k < n]
+                if len(live_route) >= 2:
+                    _emit_progress(
+                        progress_callback,
+                        "preview",
+                        {
+                            "phase": "distance_matrix",
+                            "kind": "refine",
+                            "sources_done": i + 1,
+                            "sources_total": n,
+                            "progress_pct": round(((i + 1) / n) * 100.0, 1),
+                            "distance_km": round(live_cost / 1000.0, 3),
+                            "route": [{"lat": lat, "lon": lon} for lat, lon in live_route],
+                        },
+                    )
+                    if progress_callback is not None:
+                        time.sleep(0.001)
+
         complete = nx.Graph()
         for i in range(n):
             complete.add_node(i)
         for i in range(n):
             for j in range(i + 1, n):
-                ni = snapped_nodes[i]
-                nj = snapped_nodes[j]
-                d = self._get_node_distance(graph, ni, nj)
-                if d <= 0.0 and ni != nj:
-                    d = haversine_m(points[i], points[j]) * 1.5
-                dist[i][j] = d
-                dist[j][i] = d
-                complete.add_edge(i, j, weight=d)
+                complete.add_edge(i, j, weight=dist[i][j])
 
         candidates: list[list[int]] = []
         c1 = nx.approximation.traveling_salesman_problem(
@@ -492,6 +606,9 @@ class RoutingService:
                             "route": [{"lat": lat, "lon": lon} for lat, lon in preview_route],
                         },
                     )
+                    if progress_callback is not None:
+                        # Yield briefly so stream thread can flush previews during CPU-heavy search.
+                        time.sleep(0.001)
             if idx == 1 or idx == total_candidates or idx % report_step == 0:
                 _emit_progress(
                     progress_callback,
@@ -526,6 +643,8 @@ class RoutingService:
                     "route": [{"lat": lat, "lon": lon} for lat, lon in final_preview_route],
                 },
             )
+            if progress_callback is not None:
+                time.sleep(0.001)
 
         ordered = [points[i] for i in best_tour]
         if close_loop and not same_point(ordered[-1], ordered[0]):
@@ -604,6 +723,8 @@ class RoutingService:
                         "route": [{"lat": lat, "lon": lon} for lat, lon in sampled_preview],
                     },
                 )
+                if progress_callback is not None:
+                    time.sleep(0.001)
 
         if not full_nodes:
             return waypoint_loop[:], path_length_m(waypoint_loop)
@@ -902,8 +1023,46 @@ class RoutingService:
             "status",
             {"phase": "graph_loading", "message": "Laster veinett og forbereder beregning"},
         )
-        graph = self._ensure_graph()
         selected_clinics = [self._clinic_by_id[cid] for cid in canonical_ids]
+
+        # Emit an immediate coarse preview before graph loading/shortest-path work.
+        seed_points = [c.point for c in selected_clinics]
+        if len(seed_points) >= 2:
+            n_seed = len(seed_points)
+            approx = [[0.0] * n_seed for _ in range(n_seed)]
+            for i in range(n_seed):
+                for j in range(i + 1, n_seed):
+                    d_approx = haversine_m(seed_points[i], seed_points[j]) * 1.3
+                    approx[i][j] = d_approx
+                    approx[j][i] = d_approx
+            seed_tour = _nearest_neighbor_tour(0, approx)
+            seed_rounds = max(5, min(18, tor // 10))
+            if close_loop:
+                seed_tour = _two_opt_cycle(seed_tour, approx, max_rounds=seed_rounds)
+                seed_tour = _rotate_tour_start(seed_tour, 0)
+                seed_idx = seed_tour + [seed_tour[0]]
+                seed_cost = _cycle_cost(seed_tour, approx)
+            else:
+                seed_tour = _two_opt_path(seed_tour, approx, max_rounds=seed_rounds)
+                seed_idx = seed_tour[:]
+                seed_cost = _path_cost(seed_tour, approx)
+            seed_route = [seed_points[i] for i in seed_idx if 0 <= i < n_seed]
+            if len(seed_route) >= 2:
+                _emit_progress(
+                    progress_callback,
+                    "preview",
+                    {
+                        "phase": "graph_loading",
+                        "kind": "pregraph",
+                        "progress_pct": 0.0,
+                        "distance_km": round(seed_cost / 1000.0, 3),
+                        "route": [{"lat": lat, "lon": lon} for lat, lon in seed_route],
+                    },
+                )
+                if progress_callback is not None:
+                    time.sleep(0.001)
+
+        graph = self._ensure_graph()
         waypoint_loop = self._optimize_waypoint_loop(
             graph,
             selected_clinics,
