@@ -1,98 +1,119 @@
 # Dr.Dropin Route Builder
 
-Builds shortest practical running loops that:
-- start at `Sørkedalsveien 8a, 0369 Oslo`
-- visit all Dr.Dropin clinic points once (Oslo or Oslo+Sandvika scope)
-- return to the start point
-- export GPX + HTML map overlays
+Monorepo med frontend + backend for å:
+- velge klinikker direkte i kartet
+- beregne kortest mulig løpbar rute langs veier/stier (walk-nettverk)
+- vise høydeprofil over kartet
+- laste ned GPX
 
-## Project Layout
-- `data/`: cleaned routing datasets
-- `scripts/`: route and map generation scripts
-- `output/`: generated GPX, route paths, summaries
-- `art/`: generated map visuals and logo asset
-- `docs/README.md`: dataset schema/cleaning details
+Start/slutt er fast: `Sørkedalsveien 8a, 0369 Oslo`.
 
-## Prerequisites
-- Python 3.11+
-- `uv`
-- Internet access (required for OpenStreetMap/Overpass route graph download)
+## Mappestruktur
+- `backend/`: FastAPI API for klinikker, rute og GPX
+- `frontend/`: statisk nettside (Leaflet + norsk UI)
+- `data/`: klinikkdata
+- `output/`: genererte ruter/GPX/cache
+- `scripts/`: eksisterende offline-skript
+- `docker-compose.yml`: enkel deploy av frontend + backend
 
-Install `uv` if needed:
+## Rask oppstart med Docker (anbefalt)
+1. Bygg og start:
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+make docker-up
+```
+Dette skriver også ut lokale URL-er for frontend/backend.
+
+Hvis du kjører `docker compose up` direkte (ikke `-d`), logger containerne:
+- `[frontend] UI: http://localhost:8080`
+- `[backend] API: http://localhost:8000`
+
+2. Åpne nettsiden:
+- `http://localhost:8080`
+
+3. API helse:
+- `http://localhost:8000/api/health`
+
+4. Stopp:
+```bash
+make docker-down
 ```
 
-## Setup
-```bash
-make sync
-```
-This runs:
-```bash
-uv sync --extra dev
-```
-
-## Run Everything
-Primary command:
-```bash
-make routes
-```
-
-This will:
-1. Build road-following walking loops from OSM network.
-2. Export GPX files.
-3. Regenerate HTML overlay maps (same filenames, replaced in place).
-
-## Command Reference
-1. Sync environment:
+## Lokal utvikling uten Docker
+1. Installer avhengigheter:
 ```bash
 make sync
 ```
 
-2. Build routes + regenerate overlays:
+2. Start backend:
 ```bash
-make routes
+make backend-dev
 ```
 
-3. Generate both verification SVG maps and HTML overlays:
+3. Start frontend (enkel statisk server) i egen terminal:
 ```bash
-make maps
+python3 -m http.server 8080 --directory frontend
 ```
 
-4. Alias for route build + overlays:
-```bash
-make overlays
+4. Åpne:
+- `http://localhost:8080`
+
+Merk: Ved lokal frontend via `http.server` må API-kall peke til `http://localhost:8000`.
+I Docker-oppsettet håndterer Nginx proxy automatisk `/api`.
+
+## API-endepunkter
+- `GET /api/health`
+- `GET /api/clinics`
+- `POST /api/route`
+- `POST /api/route/gpx`
+
+Eksempel request body:
+```json
+{
+  "clinic_ids": ["id-1", "id-2", "id-3"],
+  "random_starts": 2500,
+  "two_opt_rounds": 400
+}
 ```
 
-## Outputs
-### Routes
-- `output/oslo_clinics_route.gpx`
-- `output/oslo_sandvika_clinics_route.gpx`
-- `output/oslo_route_order.csv`
-- `output/oslo_sandvika_route_order.csv`
-- `output/oslo_route_path.json`
-- `output/oslo_sandvika_route_path.json`
-- `output/route_summary.json`
+## Optimaliseringsparametre
+- `random_starts`: antall randomiserte startturer i TSP-søk
+- `two_opt_rounds`: dybde på lokal forbedring
 
-### Maps
-- `art/map_oslo_overlay.html`
-- `art/map_oslo_sandvika_overlay.html`
-- `art/map_oslo_verification.svg`
-- `art/map_oslo_sandvika_verification.svg`
+Høyere tall kan gi kortere rute, men bruker lengre tid.
 
-## Optimization Controls
-You can run a longer optimization search by setting environment variables:
-```bash
-ROUTE_RANDOM_STARTS=15000 ROUTE_TWO_OPT_ROUNDS=900 \
-UV_CACHE_DIR=.uv-cache MPLCONFIGDIR=.mplconfig XDG_CACHE_HOME=.cache \
-uv run --no-project python scripts/build_routes.py
-```
+## Caching av populære ruter
+For å gjøre tunge beregninger raske ved gjentatte kall:
+- In-memory LRU-cache for varme ruter (standard `256` entries)
+- Persistent disk-cache i `output/api_route_cache/` for restart-sikring
+- Popularitetsindeks i `output/api_route_cache/popular_routes.json`
 
-Larger values generally improve routes but increase runtime.
+Cache-nøkkel er basert på:
+- valgt klinikk-subsett (unik kombinasjon av ID-er)
+- `random_starts`
+- `two_opt_rounds`
 
-## Data Inputs
-- `data/drdropin_clinics_oslo_routing_ready.csv`
+Relevant miljøvariabel:
+- `ROUTE_CACHE_MAX_ENTRIES` (standard `256`)
+
+## Viktige filer
+### Frontend
+- `frontend/index.html`
+- `frontend/styles.css`
+- `frontend/app.js`
+
+### Backend
+- `backend/app/main.py`
+- `backend/app/services/routing_service.py`
+- `backend/requirements.txt`
+
+### Deploy
+- `backend/Dockerfile`
+- `frontend/Dockerfile`
+- `frontend/nginx.conf`
+- `docker-compose.yml`
+
+### Data
 - `data/drdropin_clinics_oslo_sandvika_routing_ready.csv`
 - `data/route_start_point.csv`
 
-Dataset structure and cleaning policy are documented in `docs/README.md`.
+Detaljert datasett-dokumentasjon: `docs/README.md`.

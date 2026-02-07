@@ -1,0 +1,7 @@
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+requests==2.32.5
+osmnx==2.0.7
+networkx==3.6.1
+scikit-learn==1.8.0
+gpxpy==1.6.2

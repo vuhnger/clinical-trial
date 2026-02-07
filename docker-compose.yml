@@ -1,0 +1,43 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: drdropin-backend
+    command:
+      - /bin/sh
+      - -c
+      - |
+        echo "[backend] API: http://localhost:8000"
+        echo "[backend] Health: http://localhost:8000/api/health"
+        exec uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      DATA_DIR: /app/data
+      OUTPUT_DIR: /app/output
+      ROUTE_RANDOM_STARTS: "1800"
+      ROUTE_TWO_OPT_ROUNDS: "300"
+      ROUTE_CACHE_MAX_ENTRIES: "256"
+    volumes:
+      - ./data:/app/data:ro
+      - ./output:/app/output
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: drdropin-frontend
+    command:
+      - /bin/sh
+      - -c
+      - |
+        echo "[frontend] UI: http://localhost:8080"
+        echo "[frontend] API proxy: http://localhost:8080/api"
+        exec nginx -g 'daemon off;'
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    restart: unless-stopped

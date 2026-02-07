@@ -15,8 +15,8 @@
     "gpx_file": "output/oslo_clinics_route.gpx",
     "order_file": "output/oslo_route_order.csv",
     "path_file": "output/oslo_route_path.json",
-    "optimizer_random_starts": 15000,
-    "optimizer_two_opt_rounds": 900
+    "optimizer_random_starts": 1200,
+    "optimizer_two_opt_rounds": 220
   },
   "oslo_sandvika": {
     "clinic_count": 24,
@@ -27,7 +27,7 @@
     "gpx_file": "output/oslo_sandvika_clinics_route.gpx",
     "order_file": "output/oslo_sandvika_route_order.csv",
     "path_file": "output/oslo_sandvika_route_path.json",
-    "optimizer_random_starts": 15000,
-    "optimizer_two_opt_rounds": 900
+    "optimizer_random_starts": 1200,
+    "optimizer_two_opt_rounds": 220
   }
 }
