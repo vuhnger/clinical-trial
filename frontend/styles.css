@@ -110,6 +110,31 @@ body {
   flex-direction: column;
 }
 
+.selection-links {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #ffffff;
+  padding: 0 2px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.selection-hint {
+  width: 100%;
+  min-height: 18px;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
 .close-loop-toggle {
   display: inline-flex;
   align-items: center;

@@ -16,6 +16,7 @@ const profileGainEl = document.getElementById("profileGain");
 const introModal = document.getElementById("introModal");
 const introCloseBtn = document.getElementById("introCloseBtn");
 const statusLineEl = document.getElementById("statusLine");
+const selectionHintEl = document.getElementById("selectionHint");
 
 const state = {
   clinics: [],
@@ -26,6 +27,7 @@ const state = {
   lastRequestBody: null,
   activeStreamController: null,
   previewActive: false,
+  isBusy: false,
 };
 let hoverPopup = null;
 
@@ -53,6 +55,7 @@ const logoIcon = L.icon({
 });
 
 function setBusy(busy) {
+  state.isBusy = busy;
   closeLoopToggle.disabled = busy;
   selectAllBtn.disabled = busy;
   selectOsloBtn.disabled = busy;
@@ -60,11 +63,45 @@ function setBusy(busy) {
   clearBtn.disabled = busy;
   downloadBtn.disabled = busy || !state.lastRequestBody;
   generateBtn.textContent = busy ? "Beregner..." : "Generer rute";
+  updateGenerateState();
 }
 
 function setStatusLine(message) {
   if (!statusLineEl) return;
   statusLineEl.textContent = message || "";
+}
+
+function setSelectionHint(message) {
+  if (!selectionHintEl) return;
+  selectionHintEl.textContent = message || "";
+}
+
+function updateGenerateState() {
+  if (state.isBusy) return;
+  const hasEnough = state.selectedIds.size >= 2;
+  generateBtn.disabled = !hasEnough;
+  if (!hasEnough) {
+    setSelectionHint("Velg minst to klinikker for å generere rute.");
+  } else {
+    setSelectionHint(null);
+  }
+}
+
+function formatStatusWithPhase(data) {
+  if (!data || !data.message) return null;
+  const phaseOrder = {
+    init: { label: "Starter", step: 1, total: 5 },
+    graph_loading: { label: "Veinett", step: 1, total: 5 },
+    distance_matrix: { label: "Distanser", step: 2, total: 5 },
+    optimizing: { label: "Optimaliserer", step: 3, total: 5 },
+    building_path: { label: "Bygger rute", step: 4, total: 5 },
+    elevation: { label: "Høydeprofil", step: 5, total: 5 },
+    cache_hit: { label: "Cache", step: 4, total: 5 },
+    done: { label: "Ferdig", step: 5, total: 5 },
+  };
+  const phase = phaseOrder[data.phase];
+  if (!phase) return data.message;
+  return `${phase.label} (${phase.step}/${phase.total}) · ${data.message}`;
 }
 
 function showIntroModal() {
@@ -147,6 +184,7 @@ function toggleClinic(clinicId) {
   state.lastRequestBody = null;
   downloadBtn.disabled = true;
   setStatusLine(null);
+  updateGenerateState();
 }
 
 function selectClinics(filterFn) {
@@ -179,6 +217,7 @@ function selectClinics(filterFn) {
   drawHeightProfile([], 0);
   updateStartEndLabels();
   setStatusLine(null);
+  updateGenerateState();
 }
 
 function closeHoverPopup() {
@@ -248,6 +287,7 @@ async function loadClinics() {
   }
 
   selectClinics(() => true);
+  updateGenerateState();
 }
 
 function clearRoute() {
@@ -272,6 +312,7 @@ function clearRoute() {
   drawHeightProfile([], 0);
   updateStartEndLabels();
   setStatusLine(null);
+  updateGenerateState();
 }
 
 function routeStyle(isPreview) {
@@ -474,7 +515,7 @@ async function consumeSseResponse(response, handlers) {
 
 async function generateRoute() {
   if (state.selectedIds.size < 2) {
-    alert("Velg minst to klinikker i kartet.");
+    updateGenerateState();
     return;
   }
 
@@ -504,9 +545,8 @@ async function generateRoute() {
     let streamError = null;
     await consumeSseResponse(response, {
       status: (data) => {
-        if (data && data.message) {
-          setStatusLine(data.message);
-        }
+        const message = formatStatusWithPhase(data);
+        if (message) setStatusLine(message);
       },
       preview: (data) => {
         if (data && Array.isArray(data.route) && data.route.length > 1) {
@@ -591,6 +631,27 @@ selectOsloBtn.addEventListener("click", () =>
 downloadBtn.addEventListener("click", downloadGpx);
 clearBtn.addEventListener("click", clearRoute);
 closeLoopToggle.addEventListener("change", updateStartEndLabels);
+
+document.addEventListener("keydown", (event) => {
+  if (event.target instanceof HTMLElement) {
+    const tag = event.target.tagName.toLowerCase();
+    if (tag === "input" || tag === "textarea" || event.target.isContentEditable) {
+      return;
+    }
+  }
+  if (event.key === "Enter") {
+    if (!state.isBusy && state.selectedIds.size >= 2) {
+      event.preventDefault();
+      generateRoute();
+    }
+  }
+  if (event.key === "Escape") {
+    if (!state.isBusy) {
+      event.preventDefault();
+      clearRoute();
+    }
+  }
+});
 
 if (introCloseBtn) {
   introCloseBtn.addEventListener("click", hideIntroModal);
