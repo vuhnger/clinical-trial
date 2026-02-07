@@ -112,7 +112,9 @@ function selectClinics(filterFn) {
   if (state.activeStreamController) {
     state.activeStreamController.abort();
     state.activeStreamController = null;
+    setBusy(false);
   }
+  closeHoverPopup();
   state.selectedIds.clear();
   for (const clinic of state.clinics) {
     if (!filterFn || filterFn(clinic)) {
@@ -469,7 +471,7 @@ async function generateRoute() {
       alert(`Feil: ${error.message || error}`);
     }
   } finally {
-    if (state.activeStreamController === controller) {
+    if (!state.activeStreamController || state.activeStreamController === controller) {
       state.activeStreamController = null;
       setBusy(false);
     }
