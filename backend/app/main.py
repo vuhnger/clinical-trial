@@ -34,6 +34,28 @@ service = RoutingService(
     profile_sample_points=PROFILE_SAMPLE_POINTS,
 )
 
+_prewarm_lock = threading.Lock()
+_prewarm_started = False
+_prewarm_done = False
+_prewarm_error: str | None = None
+
+
+def _prewarm() -> None:
+    global _prewarm_started, _prewarm_done, _prewarm_error
+    with _prewarm_lock:
+        if _prewarm_started:
+            return
+        _prewarm_started = True
+        _prewarm_error = None
+    try:
+        graph = service._ensure_graph()
+        service._ensure_clinic_nodes(graph)
+        _prewarm_error = None
+        _prewarm_done = True
+    except Exception as exc:
+        _prewarm_error = str(exc)
+
+
 app = FastAPI(title="Dr.Dropin Rute API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
@@ -43,9 +65,25 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def prewarm_on_startup() -> None:
+    threading.Thread(target=_prewarm, daemon=True).start()
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/api/prewarm")
+def prewarm() -> dict[str, str]:
+    if not _prewarm_started:
+        threading.Thread(target=_prewarm, daemon=True).start()
+    if _prewarm_done:
+        return {"status": "ok", "message": "Prewarm complete"}
+    if _prewarm_error:
+        return {"status": "error", "message": _prewarm_error}
+    return {"status": "working", "message": "Prewarm started"}
 
 
 @app.get("/api/clinics")
@@ -82,6 +120,7 @@ def route_stream(payload: RouteRequest) -> StreamingResponse:
 
     def worker() -> None:
         try:
+            emit("status", {"phase": "init", "message": "Starter beregning"})
             result = service.compute_route(
                 payload.clinic_ids,
                 random_starts=payload.random_starts,
