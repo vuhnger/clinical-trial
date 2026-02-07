@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 import os
+import queue
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from backend.app.models import RouteRequest
 from backend.app.services.routing_service import RoutingService
@@ -64,6 +67,60 @@ def route_preview(payload: RouteRequest) -> JSONResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Kunne ikke beregne rute: {exc}") from exc
+
+
+def _format_sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@app.post("/api/route/stream")
+def route_stream(payload: RouteRequest) -> StreamingResponse:
+    events: queue.Queue[tuple[str, dict] | None] = queue.Queue()
+
+    def emit(event: str, data: dict) -> None:
+        events.put((event, data))
+
+    def worker() -> None:
+        try:
+            result = service.compute_route(
+                payload.clinic_ids,
+                random_starts=payload.random_starts,
+                two_opt_rounds=payload.two_opt_rounds,
+                close_loop=payload.close_loop,
+                progress_callback=emit,
+            )
+            emit("result", result)
+        except ValueError as exc:
+            emit("error", {"detail": str(exc), "status_code": 400})
+        except Exception as exc:
+            emit("error", {"detail": f"Kunne ikke beregne rute: {exc}", "status_code": 500})
+        finally:
+            events.put(None)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    def event_stream():
+        while True:
+            try:
+                item = events.get(timeout=0.5)
+            except queue.Empty:
+                # Keep-alive ping helps proxies/browsers flush incremental chunks.
+                yield ": ping\n\n"
+                continue
+            if item is None:
+                break
+            event, data = item
+            yield _format_sse(event, data)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/api/route/gpx")

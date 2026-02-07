@@ -15,6 +15,8 @@ const state = {
   selectedIds: new Set(),
   routeLayer: null,
   lastRequestBody: null,
+  activeStreamController: null,
+  previewActive: false,
 };
 let hoverPopup = null;
 
@@ -141,6 +143,10 @@ async function loadClinics() {
 }
 
 function clearRoute() {
+  if (state.activeStreamController) {
+    state.activeStreamController.abort();
+    state.activeStreamController = null;
+  }
   closeHoverPopup();
   if (state.routeLayer) {
     map.removeLayer(state.routeLayer);
@@ -152,23 +158,51 @@ function clearRoute() {
   }
   state.selectedIds.clear();
   state.lastRequestBody = null;
+  state.previewActive = false;
   downloadBtn.disabled = true;
   updateHeader(null, null);
   drawHeightProfile([], 0);
 }
 
-function drawRoute(routePoints) {
-  if (state.routeLayer) {
-    map.removeLayer(state.routeLayer);
-  }
-  const latlngs = routePoints.map((p) => [p.lat, p.lon]);
-  state.routeLayer = L.polyline(latlngs, {
+function routeStyle(isPreview) {
+  return {
     color: "#75D0C5",
-    weight: 4,
-    opacity: 0.95,
+    weight: isPreview ? 3 : 4,
+    opacity: isPreview ? 0.75 : 0.95,
+    dashArray: isPreview ? "8 8" : null,
     lineJoin: "round",
-  }).addTo(map);
-  map.fitBounds(state.routeLayer.getBounds(), { padding: [28, 28] });
+  };
+}
+
+function drawRoute(routePoints, isPreview = false) {
+  const latlngs = routePoints.map((p) => [p.lat, p.lon]);
+  if (latlngs.length === 0) {
+    return;
+  }
+  if (!state.routeLayer) {
+    state.routeLayer = L.polyline(latlngs, routeStyle(isPreview)).addTo(map);
+  } else {
+    state.routeLayer.setLatLngs(latlngs);
+    // Skip redundant setStyle during consecutive preview updates — style is unchanged.
+    if (!isPreview || !state.previewActive) {
+      state.routeLayer.setStyle(routeStyle(isPreview));
+    }
+  }
+  if (isPreview) {
+    if (!state.previewActive) {
+      map.fitBounds(state.routeLayer.getBounds(), { padding: [28, 28] });
+      state.previewActive = true;
+    }
+  } else {
+    state.previewActive = false;
+    map.fitBounds(state.routeLayer.getBounds(), { padding: [28, 28] });
+  }
+}
+
+async function yieldToBrowser() {
+  await new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
 }
 
 function calculateElevationGain(profile, minStepM = 2) {
@@ -240,35 +274,158 @@ function routeRequestBody() {
   };
 }
 
+function parseSseBlock(block) {
+  const lines = block.split(/\r?\n/);
+  let event = "message";
+  const dataParts = [];
+  for (const line of lines) {
+    if (line.startsWith("event:")) {
+      event = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      dataParts.push(line.slice(5).trim());
+    }
+  }
+  const dataText = dataParts.join("\n");
+  let data = {};
+  if (dataText) {
+    try {
+      data = JSON.parse(dataText);
+    } catch {
+      data = { raw: dataText };
+    }
+  }
+  return { event, data };
+}
+
+async function consumeSseResponse(response, handlers) {
+  if (!response.body) {
+    throw new Error("Mangler stream-body fra API.");
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let previewEventsSinceYield = 0;
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        // Flush any trailing partial SSE block if the stream ended without \n\n.
+        const trailing = buffer.replace(/\r/g, "").trim();
+        if (trailing.length > 0) {
+          const parsed = parseSseBlock(trailing);
+          const fn = handlers[parsed.event];
+          if (fn) {
+            const maybePromise = fn(parsed.data);
+            if (maybePromise && typeof maybePromise.then === "function") {
+              await maybePromise;
+            }
+          }
+        }
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      buffer = buffer.replace(/\r/g, "");
+      let splitIdx = buffer.indexOf("\n\n");
+      while (splitIdx >= 0) {
+        const block = buffer.slice(0, splitIdx).trim();
+        buffer = buffer.slice(splitIdx + 2);
+        if (block.length > 0) {
+          const parsed = parseSseBlock(block);
+          const fn = handlers[parsed.event];
+          if (fn) {
+            const maybePromise = fn(parsed.data);
+            if (maybePromise && typeof maybePromise.then === "function") {
+              await maybePromise;
+            }
+          }
+          if (parsed.event === "preview") {
+            previewEventsSinceYield += 1;
+            if (previewEventsSinceYield >= 2) {
+              previewEventsSinceYield = 0;
+              await yieldToBrowser();
+            }
+          }
+        }
+        splitIdx = buffer.indexOf("\n\n");
+      }
+    }
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      // Swallow cancel errors to avoid masking the original error.
+    }
+  }
+}
+
 async function generateRoute() {
   if (state.selectedIds.size < 2) {
     alert("Velg minst to klinikker i kartet.");
     return;
   }
 
+  if (state.activeStreamController) {
+    state.activeStreamController.abort();
+  }
+  const controller = new AbortController();
+  state.activeStreamController = controller;
+  state.previewActive = false;
+
   setBusy(true);
   try {
     const body = routeRequestBody();
-    const response = await fetch(`${API_BASE}/route`, {
+    const response = await fetch(`${API_BASE}/route/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(errorText || "Kunne ikke beregne rute.");
     }
-    const payload = await response.json();
-    drawRoute(payload.route || []);
-    const elevationGain = payload.elevation_gain_m ?? calculateElevationGain(payload.profile || []);
-    drawHeightProfile(payload.profile || [], elevationGain);
-    updateHeader(payload.distance_km, elevationGain);
+
+    let finalPayload = null;
+    let streamError = null;
+    await consumeSseResponse(response, {
+      status: () => {},
+      preview: (data) => {
+        if (data && Array.isArray(data.route) && data.route.length > 1) {
+          drawRoute(data.route, true);
+        }
+      },
+      result: (data) => {
+        finalPayload = data;
+      },
+      error: (data) => {
+        streamError = data && data.detail ? data.detail : "Ukjent stream-feil";
+      },
+    });
+
+    if (streamError) {
+      throw new Error(streamError);
+    }
+    if (!finalPayload) {
+      throw new Error("Mottok ikke sluttresultat fra stream.");
+    }
+
+    drawRoute(finalPayload.route || [], false);
+    const elevationGain =
+      finalPayload.elevation_gain_m ?? calculateElevationGain(finalPayload.profile || []);
+    drawHeightProfile(finalPayload.profile || [], elevationGain);
+    updateHeader(finalPayload.distance_km, elevationGain);
     state.lastRequestBody = body;
     downloadBtn.disabled = false;
   } catch (error) {
-    alert(`Feil: ${error.message || error}`);
+    if (error.name !== "AbortError") {
+      alert(`Feil: ${error.message || error}`);
+    }
   } finally {
-    setBusy(false);
+    if (state.activeStreamController === controller) {
+      state.activeStreamController = null;
+      setBusy(false);
+    }
   }
 }
 

@@ -64,6 +64,7 @@ I Docker-oppsettet håndterer Nginx proxy automatisk `/api`.
 - `GET /api/health`
 - `GET /api/clinics`
 - `POST /api/route`
+- `POST /api/route/stream` (SSE: progresjon + preview-rute)
 - `POST /api/route/gpx`
 
 Eksempel request body:
