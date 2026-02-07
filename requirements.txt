@@ -6,3 +6,4 @@ osmnx>=1.9.0
 networkx>=3.3
 gpxpy>=1.6.2
 matplotlib>=3.9.0
+scikit-learn>=1.5.0

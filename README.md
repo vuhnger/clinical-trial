@@ -9,6 +9,7 @@ Current workspace includes:
 - verification maps in `art/`
 - map generation script in `scripts/generate_verification_maps.py`
 - interactive overlay map script in `scripts/generate_leaflet_maps.py`
+- traced loop route builder in `scripts/build_routes.py`
 
 ## Tech Stack
 - Python 3.11+
@@ -44,6 +45,17 @@ uv run --no-project python scripts/generate_leaflet_maps.py
 Outputs:
 - `art/map_oslo_overlay.html`
 - `art/map_oslo_sandvika_overlay.html`
+
+5. Build traced loop routes (start/end at Sørkedalsveien) and refresh overlays:
+```bash
+uv run --no-project python scripts/build_routes.py
+uv run --no-project python scripts/generate_leaflet_maps.py
+```
+
+Outputs:
+- `output/oslo_clinics_route.gpx`
+- `output/oslo_sandvika_clinics_route.gpx`
+- `output/route_summary.json`
 
 ## Data Files
 - `data/drdropin_clinics_oslo_routing_ready.csv`

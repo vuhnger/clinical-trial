@@ -12,6 +12,8 @@ from pathlib import Path
 from statistics import mean
 from urllib.parse import quote
 
+from route_tracing import optimize_closed_route, route_length_m
+
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
@@ -21,6 +23,9 @@ OSLO_CSV = DATA_DIR / "drdropin_clinics_oslo_routing_ready.csv"
 OSLO_SANDVIKA_CSV = DATA_DIR / "drdropin_clinics_oslo_sandvika_routing_ready.csv"
 START_CSV = DATA_DIR / "route_start_point.csv"
 LOGO_SVG = ART_DIR / "drd-vector.svg"
+ROUTE_OUT_DIR = ROOT / "output"
+OSLO_PATH_JSON = ROUTE_OUT_DIR / "oslo_route_path.json"
+OSLO_SANDVIKA_PATH_JSON = ROUTE_OUT_DIR / "oslo_sandvika_route_path.json"
 
 OUT_OSLO = ART_DIR / "map_oslo_overlay.html"
 OUT_OSLO_SANDVIKA = ART_DIR / "map_oslo_sandvika_overlay.html"
@@ -35,29 +40,6 @@ def to_latlon(row: dict[str, str]) -> tuple[float, float]:
     return float(row["latitude"]), float(row["longitude"])
 
 
-def nearest_neighbor_path(
-    start: tuple[float, float], points: list[tuple[float, float]]
-) -> list[tuple[float, float]]:
-    """Simple visual ordering (not final road-network route)."""
-    remaining = points[:]
-    path = [start]
-    current = start
-    while remaining:
-        idx = min(
-            range(len(remaining)),
-            key=lambda i: (remaining[i][0] - current[0]) ** 2
-            + (remaining[i][1] - current[1]) ** 2,
-        )
-        nxt = remaining.pop(idx)
-        path.append(nxt)
-        current = nxt
-    return path
-
-
-def same_point(a: tuple[float, float], b: tuple[float, float], eps: float = 1e-7) -> bool:
-    return abs(a[0] - b[0]) <= eps and abs(a[1] - b[1]) <= eps
-
-
 def logo_data_uri(svg_path: Path) -> str:
     svg = svg_path.read_text(encoding="utf-8")
     compact = " ".join(svg.split())
@@ -70,6 +52,7 @@ def render_map_html(
     rows: list[dict[str, str]],
     start_row: dict[str, str],
     icon_uri: str,
+    route: list[tuple[float, float]],
     output_path: Path,
 ) -> None:
     start_lat, start_lon = to_latlon(start_row)
@@ -89,11 +72,6 @@ def render_map_html(
                 "lon": lon,
             }
         )
-
-    route_input = [
-        point for point in clinic_points if not same_point(point, (start_lat, start_lon))
-    ]
-    route = nearest_neighbor_path((start_lat, start_lon), route_input)
 
     all_lats = [start_lat] + [p[0] for p in clinic_points]
     all_lons = [start_lon] + [p[1] for p in clinic_points]
@@ -117,11 +95,11 @@ def render_map_html(
   />
   <style>
     :root {{
-      --bg: #2f3136;
-      --panel: #3a3d42;
-      --text: #f2f2f2;
-      --muted: #c6c8cc;
-      --route: #ffd84d;
+      --bg: #2E4F4E;
+      --panel: #2E4F4E;
+      --text: #FFFFFF;
+      --muted: #FFFFFF;
+      --route: #75D0C5;
     }}
     html, body {{
       margin: 0;
@@ -162,11 +140,11 @@ def render_map_html(
     }}
     .leaflet-popup-content-wrapper,
     .leaflet-popup-tip {{
-      background: #2b2d31;
-      color: #f4f4f5;
+      background: #2E4F4E;
+      color: #FFFFFF;
     }}
     .leaflet-container a {{
-      color: #ffe27a;
+      color: #FFFFFF;
     }}
   </style>
 </head>
@@ -225,7 +203,7 @@ def render_map_html(
     }});
 
     const routeLine = L.polyline(route, {{
-      color: '#ffd84d',
+      color: '#75D0C5',
       weight: 4,
       opacity: 0.95,
       lineJoin: 'round'
@@ -258,22 +236,41 @@ def main() -> None:
     if not start_rows:
         raise RuntimeError("Missing route_start_point.csv row")
     start_row = start_rows[0]
+    start_point = to_latlon(start_row)
     icon_uri = logo_data_uri(LOGO_SVG)
+    oslo_route = optimize_closed_route(start_point, [to_latlon(r) for r in oslo_rows])
+    oslo_sandvika_route = optimize_closed_route(start_point, [to_latlon(r) for r in oslo_sandvika_rows])
+    oslo_km = route_length_m(oslo_route) / 1000.0
+    oslo_sandvika_km = route_length_m(oslo_sandvika_route) / 1000.0
+
+    if OSLO_PATH_JSON.exists():
+        payload = json.loads(OSLO_PATH_JSON.read_text(encoding="utf-8"))
+        oslo_route = [(float(lat), float(lon)) for lat, lon in payload.get("road_path", [])]
+        oslo_km = float(payload.get("road_path_distance_km", oslo_km))
+
+    if OSLO_SANDVIKA_PATH_JSON.exists():
+        payload = json.loads(OSLO_SANDVIKA_PATH_JSON.read_text(encoding="utf-8"))
+        oslo_sandvika_route = [
+            (float(lat), float(lon)) for lat, lon in payload.get("road_path", [])
+        ]
+        oslo_sandvika_km = float(payload.get("road_path_distance_km", oslo_sandvika_km))
 
     render_map_html(
         title="Dr.Dropin Coordinate Overlay - Oslo",
-        subtitle=f"Clinics: {len(oslo_rows)} | Basemap: CARTO Dark + OpenStreetMap",
+        subtitle=f"Clinics: {len(oslo_rows)} | Basemap: CARTO Dark + OpenStreetMap | Traced loop: {oslo_km:.1f} km",
         rows=oslo_rows,
         start_row=start_row,
         icon_uri=icon_uri,
+        route=oslo_route,
         output_path=OUT_OSLO,
     )
     render_map_html(
         title="Dr.Dropin Coordinate Overlay - Oslo + Sandvika",
-        subtitle=f"Clinics: {len(oslo_sandvika_rows)} | Basemap: CARTO Dark + OpenStreetMap",
+        subtitle=f"Clinics: {len(oslo_sandvika_rows)} | Basemap: CARTO Dark + OpenStreetMap | Traced loop: {oslo_sandvika_km:.1f} km",
         rows=oslo_sandvika_rows,
         start_row=start_row,
         icon_uri=icon_uri,
+        route=oslo_sandvika_route,
         output_path=OUT_OSLO_SANDVIKA,
     )
     print(f"Generated: {OUT_OSLO}")

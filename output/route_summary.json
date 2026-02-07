@@ -1,0 +1,29 @@
+{
+  "start_point": {
+    "street": "Sørkedalsveien 8a",
+    "postal_code": "0369",
+    "municipality": "Oslo",
+    "latitude": 59.930461,
+    "longitude": 10.7115718
+  },
+  "oslo": {
+    "clinic_count": 22,
+    "waypoint_loop_points": 23,
+    "road_path_points": 1499,
+    "waypoint_loop_distance_km": 37.275,
+    "road_path_distance_km": 47.002,
+    "gpx_file": "output/oslo_clinics_route.gpx",
+    "order_file": "output/oslo_route_order.csv",
+    "path_file": "output/oslo_route_path.json"
+  },
+  "oslo_sandvika": {
+    "clinic_count": 24,
+    "waypoint_loop_points": 25,
+    "road_path_points": 2145,
+    "waypoint_loop_distance_km": 55.936,
+    "road_path_distance_km": 72.476,
+    "gpx_file": "output/oslo_sandvika_clinics_route.gpx",
+    "order_file": "output/oslo_sandvika_route_order.csv",
+    "path_file": "output/oslo_sandvika_route_path.json"
+  }
+}

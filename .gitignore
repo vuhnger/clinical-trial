@@ -2,6 +2,10 @@
 __pycache__/
 *.pyc
 .venv/
+.uv-cache/
+.cache/
+.mplconfig/
+cache/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
