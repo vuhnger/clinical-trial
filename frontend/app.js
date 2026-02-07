@@ -15,6 +15,7 @@ const state = {
   routeLayer: null,
   lastRequestBody: null,
 };
+let hoverPopup = null;
 
 const map = L.map("map", { zoomControl: true }).setView([59.9139, 10.7522], 11);
 L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
@@ -86,6 +87,13 @@ function toggleClinic(clinicId) {
   downloadBtn.disabled = true;
 }
 
+function closeHoverPopup() {
+  if (hoverPopup) {
+    map.closePopup(hoverPopup);
+    hoverPopup = null;
+  }
+}
+
 async function loadClinics() {
   const response = await fetch(`${API_BASE}/clinics`);
   if (!response.ok) {
@@ -97,8 +105,26 @@ async function loadClinics() {
   const bounds = [];
   for (const clinic of state.clinics) {
     const marker = L.circleMarker([clinic.lat, clinic.lon], unselectedMarkerStyle()).addTo(map);
-    marker.bindPopup(`<strong>${clinic.navn}</strong><br/>${clinic.gateadresse}, ${clinic.postnummer} ${clinic.kommune}`);
-    marker.on("click", () => toggleClinic(clinic.id));
+    const infoHtml = `<strong>${clinic.navn}</strong><br/>${clinic.gateadresse}, ${clinic.postnummer} ${clinic.kommune}`;
+    marker.on("mouseover", (event) => {
+      closeHoverPopup();
+      hoverPopup = L.popup({
+        closeButton: false,
+        autoClose: false,
+        closeOnClick: false,
+        offset: [0, -8],
+      })
+        .setLatLng(event.latlng)
+        .setContent(infoHtml)
+        .openOn(map);
+    });
+    marker.on("mouseout", () => {
+      closeHoverPopup();
+    });
+    marker.on("click", () => {
+      closeHoverPopup();
+      toggleClinic(clinic.id);
+    });
 
     // Small logo overlay on top of the circle marker for visual branding.
     const logo = L.marker([clinic.lat, clinic.lon], { icon: logoIcon, interactive: false }).addTo(map);
@@ -113,6 +139,7 @@ async function loadClinics() {
 }
 
 function clearRoute() {
+  closeHoverPopup();
   if (state.routeLayer) {
     map.removeLayer(state.routeLayer);
     state.routeLayer = null;
