@@ -24,12 +24,18 @@
           </div>
           <div class="actions">
             <label class="close-loop-toggle" for="closeLoopToggle">
-              <input id="closeLoopToggle" type="checkbox" />
+              <input id="closeLoopToggle" type="checkbox" checked />
               Lukk rute
             </label>
-            <button id="generateBtn" type="button">Generer rute</button>
-            <button id="downloadBtn" type="button" disabled>Last ned GPX</button>
-            <button id="clearBtn" type="button">Nullstill</button>
+            <div class="action-group selection-actions">
+              <button id="selectAllBtn" type="button">Alle klinikker</button>
+              <button id="selectOsloBtn" type="button">Oslo</button>
+              <button id="clearBtn" type="button">Nullstill</button>
+            </div>
+            <div class="action-group primary-actions">
+              <button id="generateBtn" type="button">Generer rute</button>
+              <button id="downloadBtn" type="button" disabled>Last ned GPX</button>
+            </div>
           </div>
         </div>
         <div class="top-right">
@@ -38,6 +44,28 @@
       </section>
       <section id="map"></section>
     </main>
+
+    <div id="introModal" class="intro-modal is-hidden" role="dialog" aria-modal="true">
+      <div class="intro-card" role="document">
+        <div class="intro-header">
+          <h2>Velg klinikker og lag rute</h2>
+          <button id="introCloseBtn" type="button" aria-label="Lukk">OK</button>
+        </div>
+        <p>
+          Klikk på klinikkene i kartet for å velge hvilke du vil ha rute gjennom.
+        </p>
+        <p>
+          Trykk på <strong>Generer rute</strong> for å lage en rute.
+        </p>
+        <p>
+          <strong>Last ned GPX</strong> laster ned en .gpx-fil du kan bruke på sportsklokke
+          for å løpe ruten.
+        </p>
+        <p>
+          <strong>Lukk rute</strong> betyr at ruten avsluttes der den starter.
+        </p>
+      </div>
+    </div>
 
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"

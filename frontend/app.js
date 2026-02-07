@@ -4,10 +4,14 @@ const clinicCountEl = document.getElementById("clinicCount");
 const totalKmEl = document.getElementById("totalKm");
 const elevationGainEl = document.getElementById("elevationGain");
 const closeLoopToggle = document.getElementById("closeLoopToggle");
+const selectAllBtn = document.getElementById("selectAllBtn");
+const selectOsloBtn = document.getElementById("selectOsloBtn");
 const generateBtn = document.getElementById("generateBtn");
 const downloadBtn = document.getElementById("downloadBtn");
 const clearBtn = document.getElementById("clearBtn");
 const profileCanvas = document.getElementById("heightProfile");
+const introModal = document.getElementById("introModal");
+const introCloseBtn = document.getElementById("introCloseBtn");
 
 const state = {
   clinics: [],
@@ -36,10 +40,23 @@ const logoIcon = L.icon({
 
 function setBusy(busy) {
   closeLoopToggle.disabled = busy;
+  selectAllBtn.disabled = busy;
+  selectOsloBtn.disabled = busy;
   generateBtn.disabled = busy;
   clearBtn.disabled = busy;
   downloadBtn.disabled = busy || !state.lastRequestBody;
   generateBtn.textContent = busy ? "Beregner..." : "Generer rute";
+}
+
+function showIntroModal() {
+  if (!introModal) return;
+  introModal.classList.remove("is-hidden");
+}
+
+function hideIntroModal() {
+  if (!introModal) return;
+  introModal.classList.add("is-hidden");
+  localStorage.setItem("routeIntroSeen", "true");
 }
 
 function updateHeader(distanceKm = null, elevationGainM = null) {
@@ -91,6 +108,34 @@ function toggleClinic(clinicId) {
   downloadBtn.disabled = true;
 }
 
+function selectClinics(filterFn) {
+  if (state.activeStreamController) {
+    state.activeStreamController.abort();
+    state.activeStreamController = null;
+  }
+  state.selectedIds.clear();
+  for (const clinic of state.clinics) {
+    if (!filterFn || filterFn(clinic)) {
+      state.selectedIds.add(clinic.id);
+    }
+  }
+  for (const clinic of state.clinics) {
+    const marker = state.markerById.get(clinic.id);
+    if (marker) {
+      marker.setStyle(state.selectedIds.has(clinic.id) ? selectedMarkerStyle() : unselectedMarkerStyle());
+    }
+  }
+  if (state.routeLayer) {
+    map.removeLayer(state.routeLayer);
+    state.routeLayer = null;
+  }
+  state.previewActive = false;
+  state.lastRequestBody = null;
+  downloadBtn.disabled = true;
+  updateHeader(null, null);
+  drawHeightProfile([], 0);
+}
+
 function closeHoverPopup() {
   if (hoverPopup) {
     map.closePopup(hoverPopup);
@@ -140,6 +185,8 @@ async function loadClinics() {
   if (bounds.length > 0) {
     map.fitBounds(bounds, { padding: [28, 28] });
   }
+
+  selectClinics(() => true);
 }
 
 function clearRoute() {
@@ -464,8 +511,27 @@ async function downloadGpx() {
 }
 
 generateBtn.addEventListener("click", generateRoute);
+selectAllBtn.addEventListener("click", () => selectClinics(() => true));
+selectOsloBtn.addEventListener("click", () =>
+  selectClinics((clinic) => String(clinic.omrade || "").toLowerCase() === "oslo")
+);
 downloadBtn.addEventListener("click", downloadGpx);
 clearBtn.addEventListener("click", clearRoute);
+
+if (introCloseBtn) {
+  introCloseBtn.addEventListener("click", hideIntroModal);
+}
+if (introModal) {
+  introModal.addEventListener("click", (event) => {
+    if (event.target === introModal) {
+      hideIntroModal();
+    }
+  });
+}
+
+if (!localStorage.getItem("routeIntroSeen")) {
+  showIntroModal();
+}
 
 drawHeightProfile([], 0);
 updateHeader(null, null);
