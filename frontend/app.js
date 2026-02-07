@@ -303,47 +303,55 @@ async function consumeSseResponse(response, handlers) {
   let buffer = "";
   let previewEventsSinceYield = 0;
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      // Flush any trailing partial SSE block if the stream ended without \n\n.
-      const trailing = buffer.replace(/\r/g, "").trim();
-      if (trailing.length > 0) {
-        const parsed = parseSseBlock(trailing);
-        const fn = handlers[parsed.event];
-        if (fn) {
-          const maybePromise = fn(parsed.data);
-          if (maybePromise && typeof maybePromise.then === "function") {
-            await maybePromise;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        // Flush any trailing partial SSE block if the stream ended without \n\n.
+        const trailing = buffer.replace(/\r/g, "").trim();
+        if (trailing.length > 0) {
+          const parsed = parseSseBlock(trailing);
+          const fn = handlers[parsed.event];
+          if (fn) {
+            const maybePromise = fn(parsed.data);
+            if (maybePromise && typeof maybePromise.then === "function") {
+              await maybePromise;
+            }
           }
         }
+        break;
       }
-      break;
+      buffer += decoder.decode(value, { stream: true });
+      buffer = buffer.replace(/\r/g, "");
+      let splitIdx = buffer.indexOf("\n\n");
+      while (splitIdx >= 0) {
+        const block = buffer.slice(0, splitIdx).trim();
+        buffer = buffer.slice(splitIdx + 2);
+        if (block.length > 0) {
+          const parsed = parseSseBlock(block);
+          const fn = handlers[parsed.event];
+          if (fn) {
+            const maybePromise = fn(parsed.data);
+            if (maybePromise && typeof maybePromise.then === "function") {
+              await maybePromise;
+            }
+          }
+          if (parsed.event === "preview") {
+            previewEventsSinceYield += 1;
+            if (previewEventsSinceYield >= 2) {
+              previewEventsSinceYield = 0;
+              await yieldToBrowser();
+            }
+          }
+        }
+        splitIdx = buffer.indexOf("\n\n");
+      }
     }
-    buffer += decoder.decode(value, { stream: true });
-    buffer = buffer.replace(/\r/g, "");
-    let splitIdx = buffer.indexOf("\n\n");
-    while (splitIdx >= 0) {
-      const block = buffer.slice(0, splitIdx).trim();
-      buffer = buffer.slice(splitIdx + 2);
-      if (block.length > 0) {
-        const parsed = parseSseBlock(block);
-        const fn = handlers[parsed.event];
-        if (fn) {
-          const maybePromise = fn(parsed.data);
-          if (maybePromise && typeof maybePromise.then === "function") {
-            await maybePromise;
-          }
-        }
-        if (parsed.event === "preview") {
-          previewEventsSinceYield += 1;
-          if (previewEventsSinceYield >= 2) {
-            previewEventsSinceYield = 0;
-            await yieldToBrowser();
-          }
-        }
-      }
-      splitIdx = buffer.indexOf("\n\n");
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      // Swallow cancel errors to avoid masking the original error.
     }
   }
 }
