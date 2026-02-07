@@ -1,7 +1,12 @@
 :root {
-  --bg: #2e4f4e;
+  --bg: #223b3a;
+  --bg-elevated: #2e4f4e;
   --text: #ffffff;
+  --text-muted: rgba(255, 255, 255, 0.78);
+  --border: rgba(255, 255, 255, 0.18);
   --accent: #75d0c5;
+  --accent-strong: #8fe2d8;
+  --accent-ghost: rgba(117, 208, 197, 0.18);
 }
 
 * {
@@ -37,10 +42,11 @@ body {
 
 .top-left,
 .top-right {
-  background: rgba(0, 0, 0, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px 14px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
 }
 
 .top-right {
@@ -62,16 +68,17 @@ body {
   flex-direction: column;
   gap: 4px;
   font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text-muted);
 }
 
 .profile-title {
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text);
   font-size: 0.95rem;
 }
 
 #profileGain {
   font-size: 1rem;
+  color: var(--accent-strong);
 }
 
 .top-left h1 {
@@ -85,6 +92,7 @@ body {
   gap: 22px;
   margin-bottom: 10px;
   font-size: 1rem;
+  color: var(--text-muted);
 }
 
 .actions {
@@ -98,7 +106,7 @@ body {
   width: 100%;
   min-height: 18px;
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--text-muted);
 }
 
 .action-group {
@@ -112,7 +120,7 @@ body {
 
 .selection-links {
   font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--text-muted);
 }
 
 .link-button {
@@ -132,7 +140,7 @@ body {
   width: 100%;
   min-height: 18px;
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-muted);
 }
 
 .close-loop-toggle {
@@ -148,22 +156,38 @@ body {
 }
 
 button {
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text);
   padding: 8px 12px;
   border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 button:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.35);
 }
 
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.primary-actions #generateBtn {
+  background: var(--accent-ghost);
+  border-color: var(--accent-strong);
+  color: #ffffff;
+}
+
+.primary-actions #generateBtn:hover {
+  background: rgba(117, 208, 197, 0.28);
+}
+
+.primary-actions #downloadBtn {
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 #heightProfile {
@@ -178,19 +202,19 @@ button:disabled {
   min-height: 560px;
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--border);
 }
 
 .leaflet-popup-content-wrapper,
 .leaflet-popup-tip {
-  background: #2e4f4e;
-  color: #ffffff;
+  background: var(--bg-elevated);
+  color: var(--text);
 }
 
 .intro-modal {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -204,8 +228,8 @@ button:disabled {
 
 .intro-card {
   width: min(520px, 92vw);
-  background: rgba(20, 32, 31, 0.98);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 16px 18px;
   box-shadow: 0 24px 50px rgba(0, 0, 0, 0.4);
@@ -219,7 +243,7 @@ button:disabled {
 .intro-card p {
   margin: 10px 0 0;
   line-height: 1.4;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text-muted);
 }
 
 .intro-header {
@@ -230,9 +254,9 @@ button:disabled {
 }
 
 #introCloseBtn {
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  border: 1px solid var(--accent-strong);
+  background: var(--accent-ghost);
+  color: var(--text);
   padding: 6px 12px;
   border-radius: 8px;
   cursor: pointer;
