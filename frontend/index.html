@@ -67,7 +67,26 @@
       <div class="intro-card" role="document">
         <div class="intro-header">
           <h2>Velg klinikker og lag rute</h2>
-          <button id="introCloseBtn" type="button" aria-label="Lukk">OK</button>
+          <button id="introCloseBtn" type="button" aria-label="Lukk" disabled>
+            OK
+            <span id="introCountdown" class="intro-countdown">(5)</span>
+          </button>
+        </div>
+        <div class="intro-legend">
+          <div class="legend-item">
+            <span class="legend-logo">
+              <img src="/logo.svg" alt="Dr. Dropin" />
+            </span>
+            <span>Dette er en Dr. Dropin-klinikk</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot legend-dot--selected" aria-hidden="true"></span>
+            <span>Med i ruten</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot legend-dot--unselected" aria-hidden="true"></span>
+            <span>Ikke med i ruten</span>
+          </div>
         </div>
         <p>
           Klikk på klinikkene i kartet for å velge hvilke du vil ha rute gjennom.

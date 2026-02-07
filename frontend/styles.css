@@ -260,6 +260,60 @@ button:disabled {
   gap: 12px;
 }
 
+.intro-countdown {
+  margin-left: 6px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.intro-legend {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+.legend-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.legend-logo img {
+  width: 16px;
+  height: 16px;
+}
+
+.legend-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.legend-dot--selected {
+  background: #75d0c5;
+}
+
+.legend-dot--unselected {
+  background: #2e4f4e;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
 #introCloseBtn {
   border: 1px solid var(--accent-strong);
   background: var(--accent-ghost);

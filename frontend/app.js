@@ -15,6 +15,7 @@ const profileCanvas = document.getElementById("heightProfile");
 const profileGainEl = document.getElementById("profileGain");
 const introModal = document.getElementById("introModal");
 const introCloseBtn = document.getElementById("introCloseBtn");
+const introCountdownEl = document.getElementById("introCountdown");
 const statusLineEl = document.getElementById("statusLine");
 const selectionHintEl = document.getElementById("selectionHint");
 
@@ -107,6 +108,28 @@ function formatStatusWithPhase(data) {
 function showIntroModal() {
   if (!introModal) return;
   introModal.classList.remove("is-hidden");
+  if (introCloseBtn) {
+    introCloseBtn.disabled = true;
+  }
+  if (introCountdownEl) {
+    introCountdownEl.textContent = "(5)";
+  }
+  let remaining = 5;
+  const timer = setInterval(() => {
+    remaining -= 1;
+    if (introCountdownEl) {
+      introCountdownEl.textContent = `(${remaining})`;
+    }
+    if (remaining <= 0) {
+      clearInterval(timer);
+      if (introCloseBtn) {
+        introCloseBtn.disabled = false;
+      }
+      if (introCountdownEl) {
+        introCountdownEl.textContent = "";
+      }
+    }
+  }, 1000);
 }
 
 function hideIntroModal() {
