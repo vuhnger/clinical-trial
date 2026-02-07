@@ -24,7 +24,7 @@
           </div>
           <div class="actions">
             <label class="close-loop-toggle" for="closeLoopToggle">
-              <input id="closeLoopToggle" type="checkbox" />
+              <input id="closeLoopToggle" type="checkbox" checked />
               Lukk rute
             </label>
             <button id="generateBtn" type="button">Generer rute</button>
@@ -38,6 +38,21 @@
       </section>
       <section id="map"></section>
     </main>
+
+    <div id="introModal" class="intro-modal is-hidden" role="dialog" aria-modal="true">
+      <div class="intro-card" role="document">
+        <div class="intro-header">
+          <h2>Velg klinikker og lag rute</h2>
+          <button id="introCloseBtn" type="button" aria-label="Lukk">OK</button>
+        </div>
+        <p>
+          Klikk på klinikkene i kartet for å velge hvilke du vil ha rute gjennom.
+        </p>
+        <p>
+          <strong>Lukk rute</strong> betyr at ruten avsluttes der den starter.
+        </p>
+      </div>
+    </div>
 
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
