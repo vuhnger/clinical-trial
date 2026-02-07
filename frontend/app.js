@@ -10,6 +10,8 @@ const generateBtn = document.getElementById("generateBtn");
 const downloadBtn = document.getElementById("downloadBtn");
 const clearBtn = document.getElementById("clearBtn");
 const profileCanvas = document.getElementById("heightProfile");
+const introModal = document.getElementById("introModal");
+const introCloseBtn = document.getElementById("introCloseBtn");
 
 const state = {
   clinics: [],
@@ -38,10 +40,23 @@ const logoIcon = L.icon({
 
 function setBusy(busy) {
   closeLoopToggle.disabled = busy;
+  selectAllBtn.disabled = busy;
+  selectOsloBtn.disabled = busy;
   generateBtn.disabled = busy;
   clearBtn.disabled = busy;
   downloadBtn.disabled = busy || !state.lastRequestBody;
   generateBtn.textContent = busy ? "Beregner..." : "Generer rute";
+}
+
+function showIntroModal() {
+  if (!introModal) return;
+  introModal.classList.remove("is-hidden");
+}
+
+function hideIntroModal() {
+  if (!introModal) return;
+  introModal.classList.add("is-hidden");
+  localStorage.setItem("routeIntroSeen", "true");
 }
 
 function updateHeader(distanceKm = null, elevationGainM = null) {
@@ -504,6 +519,21 @@ selectOsloBtn.addEventListener("click", () =>
 );
 downloadBtn.addEventListener("click", downloadGpx);
 clearBtn.addEventListener("click", clearRoute);
+
+if (introCloseBtn) {
+  introCloseBtn.addEventListener("click", hideIntroModal);
+}
+if (introModal) {
+  introModal.addEventListener("click", (event) => {
+    if (event.target === introModal) {
+      hideIntroModal();
+    }
+  });
+}
+
+if (!localStorage.getItem("routeIntroSeen")) {
+  showIntroModal();
+}
 
 drawHeightProfile([], 0);
 updateHeader(null, null);
