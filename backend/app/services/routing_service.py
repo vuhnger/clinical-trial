@@ -95,8 +95,11 @@ def _emit_progress(
         return
     try:
         progress_callback(event, payload)
-        # Yield briefly so the stream thread can flush events during CPU-heavy work.
-        time.sleep(0.001)
+        # Yield briefly so the stream thread can flush preview events during CPU-heavy work.
+        # Only sleep on high-frequency preview emissions; status events are infrequent enough
+        # that the overhead is not warranted.
+        if event == "preview":
+            time.sleep(0.001)
     except Exception:
         # Streaming/progress is best-effort and should never break route computation.
         return
@@ -422,7 +425,7 @@ class RoutingService:
                 bootstrap_tour, approx_dist, max_rounds=bootstrap_rounds
             )
             bootstrap_tour = _rotate_tour_start(bootstrap_tour, 0)
-            bootstrap_idx = bootstrap_tour + [bootstrap_tour[0]]
+            bootstrap_idx = [*bootstrap_tour, bootstrap_tour[0]]
             bootstrap_cost = _cycle_cost(bootstrap_tour, approx_dist)
         else:
             bootstrap_tour = _two_opt_path(
@@ -457,7 +460,7 @@ class RoutingService:
         # Start from approx distances; progressively replace rows with exact shortest-path lengths.
         dist = [row[:] for row in approx_dist]
         source_report_step = max(1, n // 8)
-        refine_preview_step = max(1, n // 6)
+        refine_preview_step = max(2, n // 4)
         refine_rounds = max(4, min(14, two_opt_rounds // 12))
         for i in range(n):
             ni = snapped_nodes[i]
@@ -501,7 +504,7 @@ class RoutingService:
                         live_tour, dist, max_rounds=refine_rounds
                     )
                     live_tour = _rotate_tour_start(live_tour, 0)
-                    live_idx = live_tour + [live_tour[0]]
+                    live_idx = [*live_tour, live_tour[0]]
                     live_cost = _cycle_cost(live_tour, dist)
                 else:
                     live_tour = _two_opt_path(
@@ -572,7 +575,7 @@ class RoutingService:
                 improved = _two_opt_cycle(cand, dist, max_rounds=two_opt_rounds)
                 improved = _rotate_tour_start(improved, 0)
                 cost = _cycle_cost(improved, dist)
-                preview_idx = improved + [improved[0]] if improved else []
+                preview_idx = [*improved, improved[0]] if improved else []
             else:
                 improved = _two_opt_path(cand, dist, max_rounds=two_opt_rounds)
                 cost = _path_cost(improved, dist)
@@ -619,7 +622,7 @@ class RoutingService:
         if best_tour is None:
             best_tour = _nearest_neighbor_tour(0, dist)
 
-        final_preview_idx = best_tour + [best_tour[0]] if close_loop else best_tour[:]
+        final_preview_idx = [*best_tour, best_tour[0]] if close_loop else best_tour[:]
         final_preview_route = [points[i] for i in final_preview_idx if 0 <= i < n]
         if len(final_preview_route) >= 2:
             _emit_progress(
@@ -698,10 +701,11 @@ class RoutingService:
 
             should_report = i == 0 or i == total_segments - 1 or (i + 1) % report_step == 0
             if should_report:
-                preview_route = [
-                    (float(graph.nodes[n]["y"]), float(graph.nodes[n]["x"])) for n in full_nodes
+                # Sample node indices first to avoid materializing coordinates for all nodes.
+                sampled_nodes = self._sample_indices(full_nodes, max_points=380)
+                sampled_preview = [
+                    (float(graph.nodes[n]["y"]), float(graph.nodes[n]["x"])) for n in sampled_nodes
                 ]
-                sampled_preview = self._sample_route(preview_route, max_points=380)
                 _emit_progress(
                     progress_callback,
                     "preview",
@@ -730,6 +734,12 @@ class RoutingService:
             idx = round(i * last_idx / (max_points - 1))
             out.append(route[idx])
         return out
+
+    def _sample_indices(self, items: list, max_points: int = 120) -> list:
+        if len(items) <= max_points:
+            return items[:]
+        last_idx = len(items) - 1
+        return [items[round(i * last_idx / (max_points - 1))] for i in range(max_points)]
 
     def _fetch_elevation(self, points: list[Coordinate]) -> tuple[list[float], str]:
         if not points:

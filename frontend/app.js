@@ -183,7 +183,10 @@ function drawRoute(routePoints, isPreview = false) {
     state.routeLayer = L.polyline(latlngs, routeStyle(isPreview)).addTo(map);
   } else {
     state.routeLayer.setLatLngs(latlngs);
-    state.routeLayer.setStyle(routeStyle(isPreview));
+    // Skip redundant setStyle during consecutive preview updates — style is unchanged.
+    if (!isPreview || !state.previewActive) {
+      state.routeLayer.setStyle(routeStyle(isPreview));
+    }
   }
   if (isPreview) {
     if (!state.previewActive) {
