@@ -39,6 +39,30 @@
           </div>
         </div>
         <div class="top-right">
+          <div class="profile-header">
+            <span class="profile-title">Høydeprofil</span>
+            <strong id="profileGain">0 m</strong>
+          </div>
+          <div class="profile-meta">
+            <div class="profile-row">
+              <span class="profile-icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" fill="none" />
+                  <path d="M5.5 8.5l2 2 3.5-4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <span>Start: <strong id="startClinic">–</strong></span>
+            </div>
+            <div class="profile-row">
+              <span class="profile-icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M4 2h8v12H4z" stroke="currentColor" stroke-width="2" fill="none" />
+                  <path d="M6 6h4M6 9h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                </svg>
+              </span>
+              <span>Slutt: <strong id="endClinic">–</strong></span>
+            </div>
+          </div>
           <canvas id="heightProfile" width="520" height="140"></canvas>
         </div>
       </section>
