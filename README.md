@@ -6,7 +6,7 @@ Monorepo med frontend + backend for å:
 - vise høydeprofil over kartet
 - laste ned GPX
 
-Start/slutt er fast: `Sørkedalsveien 8a, 0369 Oslo`.
+Start/slutt kan være åpen rute eller lukket rundtur (`close_loop`).
 
 ## Mappestruktur
 - `backend/`: FastAPI API for klinikker, rute og GPX
@@ -71,15 +71,27 @@ Eksempel request body:
 {
   "clinic_ids": ["id-1", "id-2", "id-3"],
   "random_starts": 2500,
-  "two_opt_rounds": 400
+  "two_opt_rounds": 400,
+  "close_loop": false
 }
 ```
+
+- `close_loop=true` gir rundtur (start/slutt samme punkt).
+- `close_loop=false` gir åpen rute (ulikt start/sluttpunkt).
 
 ## Optimaliseringsparametre
 - `random_starts`: antall randomiserte startturer i TSP-søk
 - `two_opt_rounds`: dybde på lokal forbedring
 
 Høyere tall kan gi kortere rute, men bruker lengre tid.
+API begrenser også toppverdier for å holde responstid nede:
+- `ROUTE_MAX_RANDOM_STARTS` (default `1400`)
+- `ROUTE_MAX_TWO_OPT_ROUNDS` (default `260`)
+- `PROFILE_SAMPLE_POINTS` (default `90`, færre punkter = raskere høydeprofil)
+
+Frontend bruker nå raskere standardverdier for interaktiv kjøring:
+- `random_starts=900`
+- `two_opt_rounds=140`
 
 ## Caching av populære ruter
 For å gjøre tunge beregninger raske ved gjentatte kall:

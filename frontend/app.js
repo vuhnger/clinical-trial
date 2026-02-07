@@ -3,6 +3,7 @@ const API_BASE = "/api";
 const clinicCountEl = document.getElementById("clinicCount");
 const totalKmEl = document.getElementById("totalKm");
 const elevationGainEl = document.getElementById("elevationGain");
+const closeLoopToggle = document.getElementById("closeLoopToggle");
 const generateBtn = document.getElementById("generateBtn");
 const downloadBtn = document.getElementById("downloadBtn");
 const clearBtn = document.getElementById("clearBtn");
@@ -32,6 +33,7 @@ const logoIcon = L.icon({
 });
 
 function setBusy(busy) {
+  closeLoopToggle.disabled = busy;
   generateBtn.disabled = busy;
   clearBtn.disabled = busy;
   downloadBtn.disabled = busy || !state.lastRequestBody;
@@ -232,8 +234,9 @@ function drawHeightProfile(profile, elevationGainM = null) {
 function routeRequestBody() {
   return {
     clinic_ids: Array.from(state.selectedIds),
-    random_starts: 2500,
-    two_opt_rounds: 400,
+    random_starts: 900,
+    two_opt_rounds: 140,
+    close_loop: Boolean(closeLoopToggle.checked),
   };
 }
 

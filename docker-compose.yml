@@ -14,8 +14,11 @@ services:
     environment:
       DATA_DIR: /app/data
       OUTPUT_DIR: /app/output
-      ROUTE_RANDOM_STARTS: "1800"
-      ROUTE_TWO_OPT_ROUNDS: "300"
+      ROUTE_RANDOM_STARTS: "900"
+      ROUTE_TWO_OPT_ROUNDS: "140"
+      ROUTE_MAX_RANDOM_STARTS: "1400"
+      ROUTE_MAX_TWO_OPT_ROUNDS: "260"
+      PROFILE_SAMPLE_POINTS: "90"
       ROUTE_CACHE_MAX_ENTRIES: "256"
     volumes:
       - ./data:/app/data:ro

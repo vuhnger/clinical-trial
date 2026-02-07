@@ -7,6 +7,7 @@ class RouteRequest(BaseModel):
     clinic_ids: list[str] = Field(default_factory=list)
     random_starts: int | None = None
     two_opt_rounds: int | None = None
+    close_loop: bool = False
 
 
 class Clinic(BaseModel):

@@ -188,11 +188,17 @@ class RoutingService:
         default_random_starts: int = 1800,
         default_two_opt_rounds: int = 300,
         route_cache_max_entries: int = 256,
+        max_random_starts: int = 1400,
+        max_two_opt_rounds: int = 260,
+        profile_sample_points: int = 90,
     ) -> None:
         self.data_dir = data_dir
         self.output_dir = output_dir
         self.default_random_starts = default_random_starts
         self.default_two_opt_rounds = default_two_opt_rounds
+        self.max_random_starts = max(10, max_random_starts)
+        self.max_two_opt_rounds = max(10, max_two_opt_rounds)
+        self.profile_sample_points = max(20, profile_sample_points)
         self.route_cache_max_entries = max(16, route_cache_max_entries)
         self.disk_cache_max_entries = max(120, self.route_cache_max_entries * 8)
 
@@ -202,6 +208,10 @@ class RoutingService:
 
         self._graph = None
         self._graph_lock = threading.Lock()
+        self._routing_cache_lock = threading.Lock()
+        self._clinic_node_by_id: dict[str, int] = {}
+        self._node_distance_cache: dict[tuple[int, int], float] = {}
+        self._node_path_cache: dict[tuple[int, int], list[int]] = {}
         self._cache_lock = threading.Lock()
         self._route_cache: OrderedDict[tuple[Any, ...], dict[str, Any]] = OrderedDict()
         self._disk_cache_dir = self.output_dir / "api_route_cache"
@@ -305,31 +315,80 @@ class RoutingService:
             ox.save_graphml(self._graph, self._graph_cache_path)
             return self._graph
 
+    def _ensure_clinic_nodes(self, graph) -> None:
+        with self._routing_cache_lock:
+            if self._clinic_node_by_id:
+                return
+            import osmnx as ox
+
+            lats = [c.latitude for c in self._clinics]
+            lons = [c.longitude for c in self._clinics]
+            nodes = [int(n) for n in ox.distance.nearest_nodes(graph, X=lons, Y=lats)]
+            for clinic, node_id in zip(self._clinics, nodes):
+                self._clinic_node_by_id[clinic.id] = node_id
+
+    def _get_node_distance(self, graph, u: int, v: int) -> float:
+        if u == v:
+            return 0.0
+        key = (u, v)
+        with self._routing_cache_lock:
+            cached = self._node_distance_cache.get(key)
+        if cached is not None:
+            return cached
+
+        import networkx as nx
+
+        try:
+            distance = float(nx.shortest_path_length(graph, u, v, weight="length"))
+        except Exception:
+            distance = 0.0
+        with self._routing_cache_lock:
+            self._node_distance_cache[key] = distance
+        return distance
+
+    def _get_node_path(self, graph, u: int, v: int) -> list[int]:
+        if u == v:
+            return [u]
+        key = (u, v)
+        with self._routing_cache_lock:
+            cached_path = self._node_path_cache.get(key)
+        if cached_path is not None:
+            return cached_path
+
+        import networkx as nx
+
+        try:
+            path = [int(n) for n in nx.shortest_path(graph, u, v, weight="length")]
+        except Exception:
+            path = []
+        with self._routing_cache_lock:
+            self._node_path_cache[key] = path
+        return path
+
     def _optimize_waypoint_loop(
         self,
         graph,
-        clinic_points: list[Coordinate],
+        clinics: list[ClinicRow],
         random_starts: int,
         two_opt_rounds: int,
+        close_loop: bool,
     ) -> list[Coordinate]:
         import networkx as nx
-        import osmnx as ox
+        self._ensure_clinic_nodes(graph)
 
-        points = _dedupe_points(clinic_points)
-        if not points:
+        seen_ids: set[str] = set()
+        ordered_clinics: list[ClinicRow] = []
+        for clinic in clinics:
+            if clinic.id not in seen_ids:
+                ordered_clinics.append(clinic)
+                seen_ids.add(clinic.id)
+
+        if not ordered_clinics:
             return []
+        points = [c.point for c in ordered_clinics]
+        snapped_nodes = [self._clinic_node_by_id[c.id] for c in ordered_clinics]
         if len(points) == 1:
-            return [points[0]]
-
-        lats = [p[0] for p in points]
-        lons = [p[1] for p in points]
-        snapped_nodes = [int(n) for n in ox.distance.nearest_nodes(graph, X=lons, Y=lats)]
-
-        unique_nodes = sorted(set(snapped_nodes))
-        dijkstra_cache: dict[int, dict[int, float]] = {
-            node: nx.single_source_dijkstra_path_length(graph, node, weight="length")
-            for node in unique_nodes
-        }
+            return [points[0], points[0]] if close_loop else [points[0]]
 
         n = len(points)
         dist = [[0.0] * n for _ in range(n)]
@@ -340,10 +399,9 @@ class RoutingService:
             for j in range(i + 1, n):
                 ni = snapped_nodes[i]
                 nj = snapped_nodes[j]
-                if ni == nj:
-                    d = 0.0
-                else:
-                    d = float(dijkstra_cache[ni].get(nj, haversine_m(points[i], points[j]) * 1.5))
+                d = self._get_node_distance(graph, ni, nj)
+                if d <= 0.0 and ni != nj:
+                    d = haversine_m(points[i], points[j]) * 1.5
                 dist[i][j] = d
                 dist[j][i] = d
                 complete.add_edge(i, j, weight=d)
@@ -371,8 +429,13 @@ class RoutingService:
         for cand in candidates:
             if len(cand) != n or len(set(cand)) != n:
                 continue
-            improved = _two_opt_path(cand, dist, max_rounds=two_opt_rounds)
-            cost = _path_cost(improved, dist)
+            if close_loop:
+                improved = _two_opt_cycle(cand, dist, max_rounds=two_opt_rounds)
+                improved = _rotate_tour_start(improved, 0)
+                cost = _cycle_cost(improved, dist)
+            else:
+                improved = _two_opt_path(cand, dist, max_rounds=two_opt_rounds)
+                cost = _path_cost(improved, dist)
             if cost < best_cost:
                 best_cost = cost
                 best_tour = improved
@@ -381,6 +444,8 @@ class RoutingService:
             best_tour = _nearest_neighbor_tour(0, dist)
 
         ordered = [points[i] for i in best_tour]
+        if close_loop and not same_point(ordered[-1], ordered[0]):
+            ordered.append(ordered[0])
         return ordered
 
     def _edge_length_m(self, graph, u: int, v: int) -> float:
@@ -393,7 +458,6 @@ class RoutingService:
     def _expand_on_walk_graph(
         self, graph, waypoint_loop: list[Coordinate]
     ) -> tuple[list[Coordinate], float]:
-        import networkx as nx
         import osmnx as ox
 
         if len(waypoint_loop) < 2:
@@ -412,7 +476,7 @@ class RoutingService:
                 if not full_nodes:
                     full_nodes.append(u)
                 continue
-            seg = nx.shortest_path(graph, u, v, weight="length")
+            seg = self._get_node_path(graph, u, v)
             if not seg:
                 continue
             if full_nodes and full_nodes[-1] == seg[0]:
@@ -478,7 +542,7 @@ class RoutingService:
     def _build_profile(
         self, route: list[Coordinate]
     ) -> tuple[list[dict[str, float]], str, int, int]:
-        sampled = self._sample_route(route, max_points=140)
+        sampled = self._sample_route(route, max_points=self.profile_sample_points)
         elevations, source = self._fetch_elevation(sampled)
         profile: list[dict[str, float]] = []
         km = 0.0
@@ -507,9 +571,15 @@ class RoutingService:
         return xml.encode("utf-8")
 
     def _cache_key(
-        self, clinic_ids: list[str], random_starts: int, two_opt_rounds: int
+        self, clinic_ids: list[str], random_starts: int, two_opt_rounds: int, close_loop: bool
     ) -> tuple[Any, ...]:
-        return ("route-v4", tuple(sorted(set(clinic_ids))), random_starts, two_opt_rounds)
+        return (
+            "route-v7",
+            tuple(sorted(set(clinic_ids))),
+            random_starts,
+            two_opt_rounds,
+            bool(close_loop),
+        )
 
     def _cache_key_hash(self, key: tuple[Any, ...]) -> str:
         raw = json.dumps(key, separators=(",", ":"), ensure_ascii=True)
@@ -666,6 +736,7 @@ class RoutingService:
         *,
         random_starts: int | None = None,
         two_opt_rounds: int | None = None,
+        close_loop: bool = False,
     ) -> dict[str, Any]:
         selected_ids = list(dict.fromkeys(clinic_ids))
         if len(selected_ids) < 2:
@@ -676,9 +747,11 @@ class RoutingService:
             raise ValueError(f"Ukjente klinikk-IDer: {', '.join(unknown)}")
 
         canonical_ids = sorted(set(selected_ids))
-        rs = random_starts or self.default_random_starts
-        tor = two_opt_rounds or self.default_two_opt_rounds
-        key = self._cache_key(canonical_ids, rs, tor)
+        requested_rs = random_starts or self.default_random_starts
+        requested_tor = two_opt_rounds or self.default_two_opt_rounds
+        rs = min(requested_rs, self.max_random_starts)
+        tor = min(requested_tor, self.max_two_opt_rounds)
+        key = self._cache_key(canonical_ids, rs, tor, close_loop)
 
         cached = self._get_cached_memory(key)
         if cached is not None:
@@ -698,7 +771,11 @@ class RoutingService:
         graph = self._ensure_graph()
         selected_clinics = [self._clinic_by_id[cid] for cid in canonical_ids]
         waypoint_loop = self._optimize_waypoint_loop(
-            graph, [c.point for c in selected_clinics], random_starts=rs, two_opt_rounds=tor
+            graph,
+            selected_clinics,
+            random_starts=rs,
+            two_opt_rounds=tor,
+            close_loop=close_loop,
         )
         road_path, road_distance_m = self._expand_on_walk_graph(graph, waypoint_loop)
         profile, elev_source, elevation_gain_m, elevation_loss_m = self._build_profile(road_path)
@@ -713,6 +790,7 @@ class RoutingService:
             "elevation_gain_m": elevation_gain_m,
             "elevation_loss_m": elevation_loss_m,
             "selected_clinics": [{"id": c.id, "navn": c.clinic_name} for c in selected_clinics],
+            "close_loop": bool(close_loop),
             "optimizer": {"random_starts": rs, "two_opt_rounds": tor},
         }
         self._set_cached_memory(key, payload)
@@ -726,9 +804,13 @@ class RoutingService:
         *,
         random_starts: int | None = None,
         two_opt_rounds: int | None = None,
+        close_loop: bool = False,
     ) -> tuple[bytes, str]:
         route_payload = self.compute_route(
-            clinic_ids, random_starts=random_starts, two_opt_rounds=two_opt_rounds
+            clinic_ids,
+            random_starts=random_starts,
+            two_opt_rounds=two_opt_rounds,
+            close_loop=close_loop,
         )
         route = [(point["lat"], point["lon"]) for point in route_payload["route"]]
         gpx = self._make_gpx(route, "Løperute mellom Dr. Dropin klinikker")

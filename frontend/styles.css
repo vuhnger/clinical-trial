@@ -60,6 +60,19 @@ body {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.close-loop-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.close-loop-toggle input {
+  accent-color: var(--accent);
 }
 
 button {
