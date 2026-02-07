@@ -43,6 +43,37 @@ body {
   padding: 12px 14px;
 }
 
+.top-right {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.profile-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.profile-title {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.95rem;
+}
+
+#profileGain {
+  font-size: 1rem;
+}
+
 .top-left h1 {
   margin: 0 0 8px 0;
   font-size: 1.3rem;
