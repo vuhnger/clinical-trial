@@ -15,6 +15,7 @@ const profileCanvas = document.getElementById("heightProfile");
 const profileGainEl = document.getElementById("profileGain");
 const introModal = document.getElementById("introModal");
 const introCloseBtn = document.getElementById("introCloseBtn");
+const statusLineEl = document.getElementById("statusLine");
 
 const state = {
   clinics: [],
@@ -59,6 +60,11 @@ function setBusy(busy) {
   clearBtn.disabled = busy;
   downloadBtn.disabled = busy || !state.lastRequestBody;
   generateBtn.textContent = busy ? "Beregner..." : "Generer rute";
+}
+
+function setStatusLine(message) {
+  if (!statusLineEl) return;
+  statusLineEl.textContent = message || "";
 }
 
 function showIntroModal() {
@@ -140,6 +146,7 @@ function toggleClinic(clinicId) {
   updateStartEndLabels();
   state.lastRequestBody = null;
   downloadBtn.disabled = true;
+  setStatusLine(null);
 }
 
 function selectClinics(filterFn) {
@@ -171,6 +178,7 @@ function selectClinics(filterFn) {
   updateHeader(null, null);
   drawHeightProfile([], 0);
   updateStartEndLabels();
+  setStatusLine(null);
 }
 
 function closeHoverPopup() {
@@ -180,7 +188,12 @@ function closeHoverPopup() {
   }
 }
 
+function prewarmBackend() {
+  fetch(`${API_BASE}/prewarm`, { method: "POST" }).catch(() => {});
+}
+
 async function loadClinics() {
+  prewarmBackend();
   const response = await fetch(`${API_BASE}/clinics`);
   if (!response.ok) {
     throw new Error("Kunne ikke hente klinikker.");
@@ -258,6 +271,7 @@ function clearRoute() {
   updateHeader(null, null);
   drawHeightProfile([], 0);
   updateStartEndLabels();
+  setStatusLine(null);
 }
 
 function routeStyle(isPreview) {
@@ -472,6 +486,7 @@ async function generateRoute() {
   state.previewActive = false;
 
   setBusy(true);
+  setStatusLine("Starter beregning...");
   try {
     const body = routeRequestBody();
     const response = await fetch(`${API_BASE}/route/stream`, {
@@ -488,7 +503,11 @@ async function generateRoute() {
     let finalPayload = null;
     let streamError = null;
     await consumeSseResponse(response, {
-      status: () => {},
+      status: (data) => {
+        if (data && data.message) {
+          setStatusLine(data.message);
+        }
+      },
       preview: (data) => {
         if (data && Array.isArray(data.route) && data.route.length > 1) {
           drawRoute(data.route, true);
@@ -516,10 +535,12 @@ async function generateRoute() {
     updateHeader(finalPayload.distance_km, elevationGain);
     state.lastRequestBody = body;
     downloadBtn.disabled = false;
+    setStatusLine("Rute klar");
   } catch (error) {
     if (error.name !== "AbortError") {
       alert(`Feil: ${error.message || error}`);
     }
+    setStatusLine(null);
   } finally {
     if (!state.activeStreamController || state.activeStreamController === controller) {
       state.activeStreamController = null;
