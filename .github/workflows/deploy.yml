@@ -24,6 +24,41 @@ jobs:
           script: |
             cd clinical-trial
             git pull origin main
+            mkdir -p output
             docker compose -f docker-compose.yml -f docker-compose.prod.yml down
             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+            docker exec drdropin-backend python - << "PY"
+            import time
+            import requests
+
+            base = "http://127.0.0.1:8000"
+
+            for _ in range(20):
+                try:
+                    if requests.get(f"{base}/api/health", timeout=5).ok:
+                        break
+                except Exception:
+                    time.sleep(1)
+            else:
+                print("Prewarm skipped: API not ready")
+                raise SystemExit(0)
+
+            try:
+                clinics = requests.get(f"{base}/api/clinics", timeout=10).json().get("clinics", [])
+                ids = [c["id"] for c in clinics[:2]]
+                if len(ids) < 2:
+                    print("Prewarm skipped: not enough clinics")
+                    raise SystemExit(0)
+
+                payload = {
+                    "clinic_ids": ids,
+                    "random_starts": 20,
+                    "two_opt_rounds": 20,
+                    "close_loop": False,
+                }
+                requests.post(f"{base}/api/route", json=payload, timeout=180)
+                print("Prewarm complete")
+            except Exception as exc:
+                print(f"Prewarm failed: {exc}")
+            PY
             docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50
