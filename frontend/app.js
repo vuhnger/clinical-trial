@@ -3,6 +3,8 @@ const API_BASE = "/api";
 const clinicCountEl = document.getElementById("clinicCount");
 const totalKmEl = document.getElementById("totalKm");
 const elevationGainEl = document.getElementById("elevationGain");
+const startClinicEl = document.getElementById("startClinic");
+const endClinicEl = document.getElementById("endClinic");
 const closeLoopToggle = document.getElementById("closeLoopToggle");
 const selectAllBtn = document.getElementById("selectAllBtn");
 const selectOsloBtn = document.getElementById("selectOsloBtn");
@@ -10,11 +12,13 @@ const generateBtn = document.getElementById("generateBtn");
 const downloadBtn = document.getElementById("downloadBtn");
 const clearBtn = document.getElementById("clearBtn");
 const profileCanvas = document.getElementById("heightProfile");
+const profileGainEl = document.getElementById("profileGain");
 const introModal = document.getElementById("introModal");
 const introCloseBtn = document.getElementById("introCloseBtn");
 
 const state = {
   clinics: [],
+  clinicById: new Map(),
   markerById: new Map(),
   selectedIds: new Set(),
   routeLayer: null,
@@ -30,6 +34,15 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
   subdomains: "abcd",
   attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
 }).addTo(map);
+
+const routePane = map.createPane("routePane");
+routePane.style.zIndex = 350;
+
+const clinicPane = map.createPane("clinicPane");
+clinicPane.style.zIndex = 650;
+
+const clinicLogoPane = map.createPane("clinicLogoPane");
+clinicLogoPane.style.zIndex = 700;
 
 const logoIcon = L.icon({
   iconUrl: "/logo.svg",
@@ -68,16 +81,36 @@ function updateHeader(distanceKm = null, elevationGainM = null) {
   }
   if (elevationGainM == null) {
     elevationGainEl.textContent = "0 m";
+    if (profileGainEl) profileGainEl.textContent = "0 m";
   } else {
-    elevationGainEl.textContent = `${Math.max(0, Math.round(Number(elevationGainM)))} m`;
+    const shownGain = Math.max(0, Math.round(Number(elevationGainM)));
+    elevationGainEl.textContent = `${shownGain} m`;
+    if (profileGainEl) profileGainEl.textContent = `${shownGain} m`;
   }
+}
+
+function updateStartEndLabels() {
+  const selected = Array.from(state.selectedIds);
+  if (selected.length === 0) {
+    if (startClinicEl) startClinicEl.textContent = "–";
+    if (endClinicEl) endClinicEl.textContent = "–";
+    return;
+  }
+
+  const startId = selected[0];
+  const endId = closeLoopToggle.checked ? startId : selected[selected.length - 1];
+  const startClinic = state.clinicById.get(startId);
+  const endClinic = state.clinicById.get(endId);
+
+  if (startClinicEl) startClinicEl.textContent = startClinic ? startClinic.navn : startId;
+  if (endClinicEl) endClinicEl.textContent = endClinic ? endClinic.navn : endId;
 }
 
 function selectedMarkerStyle() {
   return {
     radius: 8,
-    color: "#FFFFFF",
-    weight: 2,
+    color: "#75D0C5",
+    weight: 0,
     fillColor: "#75D0C5",
     fillOpacity: 1,
   };
@@ -86,8 +119,8 @@ function selectedMarkerStyle() {
 function unselectedMarkerStyle() {
   return {
     radius: 7,
-    color: "#FFFFFF",
-    weight: 1.5,
+    color: "#2E4F4E",
+    weight: 0,
     fillColor: "#2E4F4E",
     fillOpacity: 0.9,
   };
@@ -104,6 +137,7 @@ function toggleClinic(clinicId) {
     marker.setStyle(state.selectedIds.has(clinicId) ? selectedMarkerStyle() : unselectedMarkerStyle());
   }
   updateHeader(null);
+  updateStartEndLabels();
   state.lastRequestBody = null;
   downloadBtn.disabled = true;
 }
@@ -136,6 +170,7 @@ function selectClinics(filterFn) {
   downloadBtn.disabled = true;
   updateHeader(null, null);
   drawHeightProfile([], 0);
+  updateStartEndLabels();
 }
 
 function closeHoverPopup() {
@@ -152,10 +187,17 @@ async function loadClinics() {
   }
   const payload = await response.json();
   state.clinics = payload.clinics || [];
+  state.clinicById.clear();
+  for (const clinic of state.clinics) {
+    state.clinicById.set(clinic.id, clinic);
+  }
 
   const bounds = [];
   for (const clinic of state.clinics) {
-    const marker = L.circleMarker([clinic.lat, clinic.lon], unselectedMarkerStyle()).addTo(map);
+    const marker = L.circleMarker([clinic.lat, clinic.lon], {
+      ...unselectedMarkerStyle(),
+      pane: "clinicPane",
+    }).addTo(map);
     const infoHtml = `<strong>${clinic.navn}</strong><br/>${clinic.gateadresse}, ${clinic.postnummer} ${clinic.kommune}`;
     marker.on("mouseover", (event) => {
       closeHoverPopup();
@@ -178,7 +220,11 @@ async function loadClinics() {
     });
 
     // Small logo overlay on top of the circle marker for visual branding.
-    const logo = L.marker([clinic.lat, clinic.lon], { icon: logoIcon, interactive: false }).addTo(map);
+    const logo = L.marker([clinic.lat, clinic.lon], {
+      icon: logoIcon,
+      interactive: false,
+      pane: "clinicLogoPane",
+    }).addTo(map);
 
     state.markerById.set(clinic.id, marker);
     bounds.push([clinic.lat, clinic.lon]);
@@ -211,11 +257,12 @@ function clearRoute() {
   downloadBtn.disabled = true;
   updateHeader(null, null);
   drawHeightProfile([], 0);
+  updateStartEndLabels();
 }
 
 function routeStyle(isPreview) {
   return {
-    color: "#75D0C5",
+    color: "#B8C6C4",
     weight: isPreview ? 3 : 4,
     opacity: isPreview ? 0.75 : 0.95,
     dashArray: isPreview ? "8 8" : null,
@@ -229,7 +276,10 @@ function drawRoute(routePoints, isPreview = false) {
     return;
   }
   if (!state.routeLayer) {
-    state.routeLayer = L.polyline(latlngs, routeStyle(isPreview)).addTo(map);
+    state.routeLayer = L.polyline(latlngs, {
+      ...routeStyle(isPreview),
+      pane: "routePane",
+    }).addTo(map);
   } else {
     state.routeLayer.setLatLngs(latlngs);
     // Skip redundant setStyle during consecutive preview updates — style is unchanged.
@@ -283,7 +333,7 @@ function drawHeightProfile(profile, elevationGainM = null) {
   if (!profile || profile.length < 2) {
     ctx.fillStyle = "#FFFFFF";
     ctx.font = "12px Segoe UI, Arial";
-    ctx.fillText("Høydeprofil • 0 m", 10, 16);
+    if (profileGainEl) profileGainEl.textContent = "0 m";
     return;
   }
 
@@ -311,7 +361,7 @@ function drawHeightProfile(profile, elevationGainM = null) {
   ctx.font = "12px Segoe UI, Arial";
   const gain = elevationGainM == null ? calculateElevationGain(profile) : Math.round(Number(elevationGainM));
   const shownGain = Number.isFinite(gain) ? Math.max(0, gain) : 0;
-  ctx.fillText(`Høydeprofil • ${shownGain} m`, 10, 16);
+  if (profileGainEl) profileGainEl.textContent = `${shownGain} m`;
 }
 
 function routeRequestBody() {
@@ -519,6 +569,7 @@ selectOsloBtn.addEventListener("click", () =>
 );
 downloadBtn.addEventListener("click", downloadGpx);
 clearBtn.addEventListener("click", clearRoute);
+closeLoopToggle.addEventListener("change", updateStartEndLabels);
 
 if (introCloseBtn) {
   introCloseBtn.addEventListener("click", hideIntroModal);
