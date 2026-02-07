@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 from pathlib import Path
 
 from route_tracing import (
     build_walk_graph,
     optimize_closed_route,
+    optimize_closed_route_on_graph,
     route_length_m,
     route_on_walk_graph,
     write_gpx,
@@ -31,6 +33,7 @@ OSLO_ORDER_CSV = OUT_DIR / "oslo_route_order.csv"
 OSLO_SANDVIKA_ORDER_CSV = OUT_DIR / "oslo_sandvika_route_order.csv"
 OSLO_PATH_JSON = OUT_DIR / "oslo_route_path.json"
 OSLO_SANDVIKA_PATH_JSON = OUT_DIR / "oslo_sandvika_route_path.json"
+WALK_GRAPH_CACHE = OUT_DIR / "oslo_sandvika_walk_network.graphml"
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
@@ -83,9 +86,24 @@ def write_route_order_csv(
         w.writerows(rows)
 
 
-def build_route(start_row: dict[str, str], clinic_rows: list[dict[str, str]]) -> list[tuple[float, float]]:
+def build_route(
+    start_row: dict[str, str],
+    clinic_rows: list[dict[str, str]],
+    graph=None,
+    *,
+    random_starts: int = 400,
+    two_opt_rounds: int = 120,
+) -> list[tuple[float, float]]:
     start = to_latlon(start_row)
     points = [to_latlon(r) for r in clinic_rows]
+    if graph is not None:
+        return optimize_closed_route_on_graph(
+            graph,
+            start,
+            points,
+            random_starts=random_starts,
+            two_opt_rounds=two_opt_rounds,
+        )
     return optimize_closed_route(start, points)
 
 
@@ -114,12 +132,29 @@ def main() -> None:
 
     oslo_rows = read_csv(OSLO_CSV)
     oslo_sandvika_rows = read_csv(OSLO_SANDVIKA_CSV)
+    random_starts = int(os.getenv("ROUTE_RANDOM_STARTS", "1200"))
+    two_opt_rounds = int(os.getenv("ROUTE_TWO_OPT_ROUNDS", "220"))
 
-    oslo_waypoint_loop = build_route(start_row, oslo_rows)
-    oslo_sandvika_waypoint_loop = build_route(start_row, oslo_sandvika_rows)
+    # Build one walk graph that covers the larger (Oslo+Sandvika) set, reuse for both.
+    start = to_latlon(start_row)
+    oslo_points = [to_latlon(r) for r in oslo_rows]
+    oslo_sandvika_points = [to_latlon(r) for r in oslo_sandvika_rows]
+    walk_graph = build_walk_graph([start] + oslo_sandvika_points, cache_path=WALK_GRAPH_CACHE)
 
-    # Build one walk graph that covers the larger (Oslo+Sandvika) route, reuse for both.
-    walk_graph = build_walk_graph(oslo_sandvika_waypoint_loop)
+    oslo_waypoint_loop = build_route(
+        start_row,
+        oslo_rows,
+        graph=walk_graph,
+        random_starts=random_starts,
+        two_opt_rounds=two_opt_rounds,
+    )
+    oslo_sandvika_waypoint_loop = build_route(
+        start_row,
+        oslo_sandvika_rows,
+        graph=walk_graph,
+        random_starts=random_starts,
+        two_opt_rounds=two_opt_rounds,
+    )
     oslo_road_path, oslo_road_distance_m = route_on_walk_graph(walk_graph, oslo_waypoint_loop)
     oslo_sandvika_road_path, oslo_sandvika_road_distance_m = route_on_walk_graph(
         walk_graph, oslo_sandvika_waypoint_loop
@@ -164,6 +199,8 @@ def main() -> None:
             "gpx_file": str(OSLO_GPX.relative_to(ROOT)),
             "order_file": str(OSLO_ORDER_CSV.relative_to(ROOT)),
             "path_file": str(OSLO_PATH_JSON.relative_to(ROOT)),
+            "optimizer_random_starts": random_starts,
+            "optimizer_two_opt_rounds": two_opt_rounds,
         },
         "oslo_sandvika": {
             "clinic_count": len(oslo_sandvika_rows),
@@ -174,6 +211,8 @@ def main() -> None:
             "gpx_file": str(OSLO_SANDVIKA_GPX.relative_to(ROOT)),
             "order_file": str(OSLO_SANDVIKA_ORDER_CSV.relative_to(ROOT)),
             "path_file": str(OSLO_SANDVIKA_PATH_JSON.relative_to(ROOT)),
+            "optimizer_random_starts": random_starts,
+            "optimizer_two_opt_rounds": two_opt_rounds,
         },
     }
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -185,6 +224,7 @@ def main() -> None:
     print(f"Wrote: {OSLO_SANDVIKA_ORDER_CSV}")
     print(f"Wrote: {OSLO_PATH_JSON}")
     print(f"Wrote: {OSLO_SANDVIKA_PATH_JSON}")
+    print(f"Graph cache: {WALK_GRAPH_CACHE}")
     print(f"Wrote: {SUMMARY_JSON}")
     print(f"Oslo road-path distance: {summary['oslo']['road_path_distance_km']} km")
     print(f"Oslo+Sandvika road-path distance: {summary['oslo_sandvika']['road_path_distance_km']} km")

@@ -9,21 +9,25 @@
   "oslo": {
     "clinic_count": 22,
     "waypoint_loop_points": 23,
-    "road_path_points": 1499,
-    "waypoint_loop_distance_km": 37.275,
-    "road_path_distance_km": 47.002,
+    "road_path_points": 1278,
+    "waypoint_loop_distance_km": 32.821,
+    "road_path_distance_km": 40.962,
     "gpx_file": "output/oslo_clinics_route.gpx",
     "order_file": "output/oslo_route_order.csv",
-    "path_file": "output/oslo_route_path.json"
+    "path_file": "output/oslo_route_path.json",
+    "optimizer_random_starts": 15000,
+    "optimizer_two_opt_rounds": 900
   },
   "oslo_sandvika": {
     "clinic_count": 24,
     "waypoint_loop_points": 25,
-    "road_path_points": 2145,
-    "waypoint_loop_distance_km": 55.936,
-    "road_path_distance_km": 72.476,
+    "road_path_points": 1817,
+    "waypoint_loop_distance_km": 52.093,
+    "road_path_distance_km": 63.104,
     "gpx_file": "output/oslo_sandvika_clinics_route.gpx",
     "order_file": "output/oslo_sandvika_route_order.csv",
-    "path_file": "output/oslo_sandvika_route_path.json"
+    "path_file": "output/oslo_sandvika_route_path.json",
+    "optimizer_random_starts": 15000,
+    "optimizer_two_opt_rounds": 900
   }
 }

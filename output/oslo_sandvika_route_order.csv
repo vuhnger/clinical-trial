@@ -1,26 +1,26 @@
 sequence,name,street,postal_code,municipality,latitude,longitude
 1,Bedriftshelsetjeneste,Sørkedalsveien 8,0369,Oslo,59.93046100,10.71157180
-2,Sørkedalsveien: Øyehelseklinikken,Sørkedalsveien 10D,0369,Oslo,59.93073000,10.70996000
-3,"Skøyen: Allmennlege, Gynekolog",Karenslyst Allé 32,0278,Oslo,59.92067420,10.68199270
-4,"Kirkeveien: Hudlege, Gynekolog, FotoFinder, Gastro",Kirkeveien 60,0368,Oslo,59.92850560,10.71430310
-5,"Majorstuen: Fysioterapi, Kiropraktor",Majorstuveien 30,0367,Oslo,59.92717080,10.71561140
-6,Bogstadveien: Allmennlege,Bogstadveien 30,0355,Oslo,59.92622000,10.72105110
-7,"Hegdehaugsveien: Hudlege, Gynekolog, Fysioterapeut, Kiropraktor, Psykolog, Øre-Nese-Hals",Oscars gate 20,0352,Oslo,59.92240900,10.72808700
-8,"Bislett: Allmennlege, Fysioterapi, Kiropraktor",Dalsbergstien 18,0170,Oslo,59.92302390,10.73587020
-9,"Huitfeldts gate: Psykolog, Psykiater",Huitfeldtsgate 4A,0253,Oslo,59.91485900,10.72615710
-10,"Vika Terrasse: Allmennlege, BHT",Ruseløkkveien 14,0251,Oslo,59.91327760,10.72821180
-11,Stortorvet: Allmennlege,Møllergata 4,0179,Oslo,59.91376900,10.74582000
-12,Kirkegata: Psykolog,Kirkegata 1-3,0153,Oslo,59.90905830,10.74225860
-13,Barcode: Allmennlege,Dronning Eufemias gate 9,0191,Oslo,59.90851020,10.75409350
-14,"Grünerløkka, Markveien: Fysioterapeut, Osteopat, Kiropraktor",Markveien 25,0554,Oslo,59.92468500,10.75695440
-15,"Grünerløkka: Allmennlege, Gynekolog",Thorvald Meyers gate 35,0555,Oslo,59.92520580,10.75895090
-16,Ullevål Stadion: Allmennlege,Sognsveien 75c,0855,Oslo,59.94969540,10.73357990
-17,Nydalen: Allmennlege,Nydalen allé 17,0484,Oslo,59.94786520,10.76700050
-18,Torshov: Allmennlege,Torshovgata 7,0476,Oslo,59.93369840,10.76400000
-19,"Carl Berner: Allmennlege, Fysioterapeut, Kiropraktor, Psykolog",Dælenenggata 20,0567,Oslo,59.92761100,10.77009010
-20,"Økern: Allmennlege, Psykolog, Fysioterapeut og Kiropraktor",Østre Aker vei 19,0581,Oslo,59.92759000,10.80658600
-21,"Ensjø: Allmennlege, Hudlege, Gynekolog, Fysioterapeut, Kiropraktor",Ensjøveien 21,0661,Oslo,59.91351770,10.78883140
-22,"Nordstrand (Sæter Torg): Allmennlege, Hudlege, Psykolog, Gynekolog",Nordstrandveien 46,1162,Oslo,59.86083300,10.80319100
-23,"Sandvika Stasjon: Fysioterapeut, Kiropraktor, Psykolog",Leif Tronstads plass 7,1337,Bærum,59.89338230,10.52436690
-24,"Sandvika Sentrum: Allmennlege, Hudlege",Claude Monet allé 21,1338,Bærum,59.88941140,10.52214210
+2,"Kirkeveien: Hudlege, Gynekolog, FotoFinder, Gastro",Kirkeveien 60,0368,Oslo,59.92850560,10.71430310
+3,"Majorstuen: Fysioterapi, Kiropraktor",Majorstuveien 30,0367,Oslo,59.92717080,10.71561140
+4,Bogstadveien: Allmennlege,Bogstadveien 30,0355,Oslo,59.92622000,10.72105110
+5,"Hegdehaugsveien: Hudlege, Gynekolog, Fysioterapeut, Kiropraktor, Psykolog, Øre-Nese-Hals",Oscars gate 20,0352,Oslo,59.92240900,10.72808700
+6,"Bislett: Allmennlege, Fysioterapi, Kiropraktor",Dalsbergstien 18,0170,Oslo,59.92302390,10.73587020
+7,Ullevål Stadion: Allmennlege,Sognsveien 75c,0855,Oslo,59.94969540,10.73357990
+8,Nydalen: Allmennlege,Nydalen allé 17,0484,Oslo,59.94786520,10.76700050
+9,Torshov: Allmennlege,Torshovgata 7,0476,Oslo,59.93369840,10.76400000
+10,"Grünerløkka, Markveien: Fysioterapeut, Osteopat, Kiropraktor",Markveien 25,0554,Oslo,59.92468500,10.75695440
+11,"Grünerløkka: Allmennlege, Gynekolog",Thorvald Meyers gate 35,0555,Oslo,59.92520580,10.75895090
+12,"Carl Berner: Allmennlege, Fysioterapeut, Kiropraktor, Psykolog",Dælenenggata 20,0567,Oslo,59.92761100,10.77009010
+13,"Økern: Allmennlege, Psykolog, Fysioterapeut og Kiropraktor",Østre Aker vei 19,0581,Oslo,59.92759000,10.80658600
+14,"Ensjø: Allmennlege, Hudlege, Gynekolog, Fysioterapeut, Kiropraktor",Ensjøveien 21,0661,Oslo,59.91351770,10.78883140
+15,"Nordstrand (Sæter Torg): Allmennlege, Hudlege, Psykolog, Gynekolog",Nordstrandveien 46,1162,Oslo,59.86083300,10.80319100
+16,Barcode: Allmennlege,Dronning Eufemias gate 9,0191,Oslo,59.90851020,10.75409350
+17,Stortorvet: Allmennlege,Møllergata 4,0179,Oslo,59.91376900,10.74582000
+18,Kirkegata: Psykolog,Kirkegata 1-3,0153,Oslo,59.90905830,10.74225860
+19,"Vika Terrasse: Allmennlege, BHT",Ruseløkkveien 14,0251,Oslo,59.91327760,10.72821180
+20,"Huitfeldts gate: Psykolog, Psykiater",Huitfeldtsgate 4A,0253,Oslo,59.91485900,10.72615710
+21,"Skøyen: Allmennlege, Gynekolog",Karenslyst Allé 32,0278,Oslo,59.92067420,10.68199270
+22,"Sandvika Stasjon: Fysioterapeut, Kiropraktor, Psykolog",Leif Tronstads plass 7,1337,Bærum,59.89338230,10.52436690
+23,"Sandvika Sentrum: Allmennlege, Hudlege",Claude Monet allé 21,1338,Bærum,59.88941140,10.52214210
+24,Sørkedalsveien: Øyehelseklinikken,Sørkedalsveien 10D,0369,Oslo,59.93073000,10.70996000
 25,Bedriftshelsetjeneste,Sørkedalsveien 8,0369,Oslo,59.93046100,10.71157180

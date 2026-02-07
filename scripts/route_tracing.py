@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import os
+import random
 from pathlib import Path
 from typing import Iterable
 
@@ -115,7 +116,178 @@ def optimize_closed_route(start: Coordinate, waypoints: Iterable[Coordinate]) ->
     return open_route
 
 
-def build_walk_graph(points: Iterable[Coordinate], padding_deg: float = 0.02):
+def _rotate_cycle_to_start(cycle_nodes: list[int], start_idx: int) -> list[int]:
+    if not cycle_nodes:
+        return []
+    pos = cycle_nodes.index(start_idx)
+    return cycle_nodes[pos:] + cycle_nodes[:pos]
+
+
+def _rotate_tour_start(tour: list[int], start_idx: int = 0) -> list[int]:
+    if start_idx not in tour:
+        return tour[:]
+    pos = tour.index(start_idx)
+    return tour[pos:] + tour[:pos]
+
+
+def _cycle_cost(tour: list[int], dist: list[list[float]]) -> float:
+    n = len(tour)
+    return sum(dist[tour[i]][tour[(i + 1) % n]] for i in range(n))
+
+
+def _two_opt_cycle(tour: list[int], dist: list[list[float]], max_rounds: int = 80) -> list[int]:
+    """2-opt local search for cycle with fixed start at index 0."""
+    if len(tour) < 5:
+        return tour[:]
+
+    best = _rotate_tour_start(tour, 0)
+    best_cost = _cycle_cost(best, dist)
+
+    improved = True
+    rounds = 0
+    n = len(best)
+    while improved and rounds < max_rounds:
+        improved = False
+        rounds += 1
+        for i in range(1, n - 2):
+            for k in range(i + 1, n - 1):
+                cand = best[:i] + best[i : k + 1][::-1] + best[k + 1 :]
+                cand_cost = _cycle_cost(cand, dist)
+                if cand_cost + 1e-9 < best_cost:
+                    best = cand
+                    best_cost = cand_cost
+                    improved = True
+                    break
+            if improved:
+                break
+    return best
+
+
+def _nearest_neighbor_tour(start_idx: int, dist: list[list[float]]) -> list[int]:
+    n = len(dist)
+    remaining = set(range(n))
+    remaining.remove(start_idx)
+    tour = [start_idx]
+    current = start_idx
+    while remaining:
+        nxt = min(remaining, key=lambda j: dist[current][j])
+        tour.append(nxt)
+        remaining.remove(nxt)
+        current = nxt
+    return tour
+
+
+def _tour_from_cycle_result(cycle: list[int]) -> list[int]:
+    if not cycle:
+        return []
+    return cycle[:-1] if cycle[0] == cycle[-1] else cycle[:]
+
+
+def optimize_closed_route_on_graph(
+    graph,
+    start: Coordinate,
+    waypoints: Iterable[Coordinate],
+    *,
+    random_starts: int = 400,
+    two_opt_rounds: int = 120,
+    random_seed: int = 42,
+) -> list[Coordinate]:
+    """Optimize a closed waypoint loop using road-network distances.
+
+    Uses multiple candidate tours + 2-opt on the complete road-distance graph
+    and returns the best cycle anchored at the start point.
+    """
+    import networkx as nx
+    import osmnx as ox
+
+    cleaned = [p for p in _dedupe_points(waypoints) if not same_point(p, start)]
+    if not cleaned:
+        return [start, start]
+
+    points = [start] + cleaned
+    lats = [p[0] for p in points]
+    lons = [p[1] for p in points]
+    snapped_nodes = [int(n) for n in ox.distance.nearest_nodes(graph, X=lons, Y=lats)]
+
+    unique_nodes = sorted(set(snapped_nodes))
+    dijkstra_cache: dict[int, dict[int, float]] = {
+        node: nx.single_source_dijkstra_path_length(graph, node, weight="length")
+        for node in unique_nodes
+    }
+
+    n = len(points)
+    dist = [[0.0] * n for _ in range(n)]
+    complete = nx.Graph()
+    for i in range(n):
+        complete.add_node(i)
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            ni = snapped_nodes[i]
+            nj = snapped_nodes[j]
+            if ni == nj:
+                d = 0.0
+            else:
+                d = float(dijkstra_cache[ni].get(nj, haversine_m(points[i], points[j]) * 1.5))
+            dist[i][j] = d
+            dist[j][i] = d
+            complete.add_edge(i, j, weight=d)
+
+    candidates: list[list[int]] = []
+
+    # 1) Christofides cycle.
+    c1 = nx.approximation.traveling_salesman_problem(
+        complete,
+        cycle=True,
+        weight="weight",
+        method=nx.approximation.christofides,
+    )
+    candidates.append(_tour_from_cycle_result(c1))
+
+    # 2) Greedy cycle.
+    c2 = nx.approximation.greedy_tsp(complete, source=0, weight="weight")
+    candidates.append(_tour_from_cycle_result(c2))
+
+    # 3) Nearest-neighbor seed.
+    candidates.append(_nearest_neighbor_tour(0, dist))
+
+    # 4) Multi-start shuffled seeds for extra local minima exploration.
+    rng = random.Random(random_seed)
+    base = list(range(1, n))
+    for _ in range(max(0, random_starts)):
+        rng.shuffle(base)
+        candidates.append([0] + base[:])
+
+    best_tour: list[int] | None = None
+    best_cost = float("inf")
+    for cand in candidates:
+        if not cand:
+            continue
+        # Ensure all nodes exactly once.
+        cand_set = set(cand)
+        if len(cand) != n or len(cand_set) != n:
+            continue
+        improved = _two_opt_cycle(cand, dist, max_rounds=two_opt_rounds)
+        improved = _rotate_tour_start(improved, 0)
+        cost = _cycle_cost(improved, dist)
+        if cost < best_cost:
+            best_cost = cost
+            best_tour = improved
+
+    if best_tour is None:
+        best_tour = _nearest_neighbor_tour(0, dist)
+
+    ordered = [points[i] for i in best_tour]
+    if not same_point(ordered[0], start):
+        ordered = [start] + ordered
+    if not same_point(ordered[-1], start):
+        ordered.append(start)
+    return ordered
+
+
+def build_walk_graph(
+    points: Iterable[Coordinate], padding_deg: float = 0.02, cache_path: Path | None = None
+):
     """Build an OSM walk graph for the bounding box covering provided points."""
     # Avoid unwritable cache directories in restricted environments.
     os.environ.setdefault("MPLCONFIGDIR", str((Path.cwd() / ".mplconfig").resolve()))
@@ -124,6 +296,9 @@ def build_walk_graph(points: Iterable[Coordinate], padding_deg: float = 0.02):
     Path(os.environ["XDG_CACHE_HOME"]).mkdir(parents=True, exist_ok=True)
 
     import osmnx as ox
+
+    if cache_path is not None and cache_path.exists():
+        return ox.load_graphml(cache_path)
 
     pts = list(points)
     if not pts:
@@ -137,7 +312,11 @@ def build_walk_graph(points: Iterable[Coordinate], padding_deg: float = 0.02):
     west = min(lons) - padding_deg
 
     # OSMnx expects bbox=(left, bottom, right, top) i.e. (west, south, east, north).
-    return ox.graph_from_bbox((west, south, east, north), network_type="walk", simplify=True)
+    graph = ox.graph_from_bbox((west, south, east, north), network_type="walk", simplify=True)
+    if cache_path is not None:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        ox.save_graphml(graph, cache_path)
+    return graph
 
 
 def _edge_length_m(graph, u: int, v: int) -> float:
