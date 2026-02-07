@@ -411,8 +411,10 @@ async function generateRoute() {
       alert(`Feil: ${error.message || error}`);
     }
   } finally {
-    state.activeStreamController = null;
-    setBusy(false);
+    if (state.activeStreamController === controller) {
+      state.activeStreamController = null;
+      setBusy(false);
+    }
   }
 }
 
