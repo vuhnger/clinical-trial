@@ -260,7 +260,7 @@ class RoutingService:
                 self._graph = ox.load_graphml(self._graph_cache_path)
                 return self._graph
 
-            points = [self.start_point] + [c.point for c in self._clinics]
+            points = [c.point for c in self._clinics]
             lats = [p[0] for p in points]
             lons = [p[1] for p in points]
             north = max(lats) + 0.02
@@ -282,11 +282,12 @@ class RoutingService:
         import networkx as nx
         import osmnx as ox
 
-        cleaned = [p for p in _dedupe_points(clinic_points) if not same_point(p, self.start_point)]
-        if not cleaned:
-            return [self.start_point, self.start_point]
+        points = _dedupe_points(clinic_points)
+        if not points:
+            return []
+        if len(points) == 1:
+            return [points[0], points[0]]
 
-        points = [self.start_point] + cleaned
         lats = [p[0] for p in points]
         lons = [p[1] for p in points]
         snapped_nodes = [int(n) for n in ox.distance.nearest_nodes(graph, X=lons, Y=lats)]
@@ -348,10 +349,8 @@ class RoutingService:
             best_tour = _nearest_neighbor_tour(0, dist)
 
         ordered = [points[i] for i in best_tour]
-        if not same_point(ordered[0], self.start_point):
-            ordered = [self.start_point] + ordered
-        if not same_point(ordered[-1], self.start_point):
-            ordered.append(self.start_point)
+        if not same_point(ordered[-1], ordered[0]):
+            ordered.append(ordered[0])
         return ordered
 
     def _edge_length_m(self, graph, u: int, v: int) -> float:
@@ -480,7 +479,7 @@ class RoutingService:
     def _cache_key(
         self, clinic_ids: list[str], random_starts: int, two_opt_rounds: int
     ) -> tuple[Any, ...]:
-        return ("route-v2", tuple(sorted(set(clinic_ids))), random_starts, two_opt_rounds)
+        return ("route-v3", tuple(sorted(set(clinic_ids))), random_starts, two_opt_rounds)
 
     def _cache_key_hash(self, key: tuple[Any, ...]) -> str:
         raw = json.dumps(key, separators=(",", ":"), ensure_ascii=True)
@@ -684,7 +683,6 @@ class RoutingService:
             "elevation_gain_m": elevation_gain_m,
             "elevation_loss_m": elevation_loss_m,
             "selected_clinics": [{"id": c.id, "navn": c.clinic_name} for c in selected_clinics],
-            "start": self._start,
             "optimizer": {"random_starts": rs, "two_opt_rounds": tor},
         }
         self._set_cached_memory(key, payload)
