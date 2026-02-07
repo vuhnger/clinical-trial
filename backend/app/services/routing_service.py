@@ -741,6 +741,22 @@ class RoutingService:
         last_idx = len(items) - 1
         return [items[round(i * last_idx / (max_points - 1))] for i in range(max_points)]
 
+    def _fetch_elevation_opentopodata(self, points: list[Coordinate]) -> list[float]:
+        url = "https://api.opentopodata.org/v1/srtm90m"
+        elevations: list[float] = []
+        chunk_size = 100
+        for i in range(0, len(points), chunk_size):
+            chunk = points[i : i + chunk_size]
+            locations = "|".join(f"{lat},{lon}" for lat, lon in chunk)
+            resp = requests.get(url, params={"locations": locations}, timeout=25)
+            resp.raise_for_status()
+            payload = resp.json()
+            results = payload.get("results", [])
+            if len(results) != len(chunk):
+                raise ValueError("Ugyldig høyde-respons")
+            elevations.extend(float(item.get("elevation", 0.0)) for item in results)
+        return elevations
+
     def _fetch_elevation(self, points: list[Coordinate]) -> tuple[list[float], str]:
         if not points:
             return [], "none"
@@ -761,7 +777,11 @@ class RoutingService:
                 elevations.extend(float(item.get("elevation", 0.0)) for item in results)
             return elevations, "open-elevation"
         except Exception:
-            return [0.0] * len(points), "fallback-flat"
+            try:
+                elevations = self._fetch_elevation_opentopodata(points)
+                return elevations, "opentopodata"
+            except Exception:
+                return [0.0] * len(points), "fallback-flat"
 
     def _elevation_totals(
         self, elevations: list[float], *, min_step_m: float = 2.0
