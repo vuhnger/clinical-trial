@@ -9,3 +9,8 @@ cache/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Generated route/map artifacts (keep local, do not commit)
+output/
+art/map_*_overlay.html
+art/map_*_verification.svg

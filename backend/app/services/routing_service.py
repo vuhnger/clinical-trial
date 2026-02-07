@@ -431,7 +431,24 @@ class RoutingService:
         except Exception:
             return [0.0] * len(points), "fallback-flat"
 
-    def _build_profile(self, route: list[Coordinate]) -> tuple[list[dict[str, float]], str]:
+    def _elevation_totals(
+        self, elevations: list[float], *, min_step_m: float = 2.0
+    ) -> tuple[int, int]:
+        if len(elevations) < 2:
+            return 0, 0
+        gain = 0.0
+        loss = 0.0
+        for i in range(1, len(elevations)):
+            delta = float(elevations[i]) - float(elevations[i - 1])
+            if delta >= min_step_m:
+                gain += delta
+            elif delta <= -min_step_m:
+                loss += -delta
+        return int(round(gain)), int(round(loss))
+
+    def _build_profile(
+        self, route: list[Coordinate]
+    ) -> tuple[list[dict[str, float]], str, int, int]:
         sampled = self._sample_route(route, max_points=140)
         elevations, source = self._fetch_elevation(sampled)
         profile: list[dict[str, float]] = []
@@ -441,7 +458,8 @@ class RoutingService:
                 km += haversine_m(sampled[i - 1], point) / 1000.0
             elev = elevations[i] if i < len(elevations) else 0.0
             profile.append({"km": round(km, 3), "elev": round(float(elev), 1)})
-        return profile, source
+        gain_m, loss_m = self._elevation_totals(elevations)
+        return profile, source, gain_m, loss_m
 
     def _make_gpx(self, route: list[Coordinate], name: str) -> bytes:
         points_xml = "\n".join(
@@ -654,7 +672,7 @@ class RoutingService:
             graph, [c.point for c in selected_clinics], random_starts=rs, two_opt_rounds=tor
         )
         road_path, road_distance_m = self._expand_on_walk_graph(graph, waypoint_loop)
-        profile, elev_source = self._build_profile(road_path)
+        profile, elev_source, elevation_gain_m, elevation_loss_m = self._build_profile(road_path)
 
         payload = {
             "tittel": "Løperute mellom Dr. Dropin klinikker",
@@ -663,6 +681,8 @@ class RoutingService:
             "route": [{"lat": lat, "lon": lon} for lat, lon in road_path],
             "profile": profile,
             "elevation_source": elev_source,
+            "elevation_gain_m": elevation_gain_m,
+            "elevation_loss_m": elevation_loss_m,
             "selected_clinics": [{"id": c.id, "navn": c.clinic_name} for c in selected_clinics],
             "start": self._start,
             "optimizer": {"random_starts": rs, "two_opt_rounds": tor},

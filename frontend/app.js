@@ -2,6 +2,7 @@ const API_BASE = "/api";
 
 const clinicCountEl = document.getElementById("clinicCount");
 const totalKmEl = document.getElementById("totalKm");
+const elevationGainEl = document.getElementById("elevationGain");
 const generateBtn = document.getElementById("generateBtn");
 const downloadBtn = document.getElementById("downloadBtn");
 const clearBtn = document.getElementById("clearBtn");
@@ -36,12 +37,17 @@ function setBusy(busy) {
   generateBtn.textContent = busy ? "Beregner..." : "Generer rute";
 }
 
-function updateHeader(distanceKm = null) {
+function updateHeader(distanceKm = null, elevationGainM = null) {
   clinicCountEl.textContent = String(state.selectedIds.size);
   if (distanceKm == null) {
     totalKmEl.textContent = "0.0";
   } else {
     totalKmEl.textContent = Number(distanceKm).toFixed(1);
+  }
+  if (elevationGainM == null) {
+    elevationGainEl.textContent = "0 m";
+  } else {
+    elevationGainEl.textContent = `${Math.max(0, Math.round(Number(elevationGainM)))} m`;
   }
 }
 
@@ -118,8 +124,8 @@ function clearRoute() {
   state.selectedIds.clear();
   state.lastRequestBody = null;
   downloadBtn.disabled = true;
-  updateHeader(null);
-  drawHeightProfile([]);
+  updateHeader(null, null);
+  drawHeightProfile([], 0);
 }
 
 function drawRoute(routePoints) {
@@ -136,7 +142,17 @@ function drawRoute(routePoints) {
   map.fitBounds(state.routeLayer.getBounds(), { padding: [28, 28] });
 }
 
-function drawHeightProfile(profile) {
+function calculateElevationGain(profile, minStepM = 2) {
+  if (!profile || profile.length < 2) return 0;
+  let gain = 0;
+  for (let i = 1; i < profile.length; i += 1) {
+    const delta = Number(profile[i].elev) - Number(profile[i - 1].elev);
+    if (Number.isFinite(delta) && delta >= minStepM) gain += delta;
+  }
+  return Math.round(gain);
+}
+
+function drawHeightProfile(profile, elevationGainM = null) {
   const ctx = profileCanvas.getContext("2d");
   const w = profileCanvas.width;
   const h = profileCanvas.height;
@@ -155,7 +171,7 @@ function drawHeightProfile(profile) {
   if (!profile || profile.length < 2) {
     ctx.fillStyle = "#FFFFFF";
     ctx.font = "12px Segoe UI, Arial";
-    ctx.fillText("Høydeprofil", 10, 16);
+    ctx.fillText("Høydeprofil • 0 m", 10, 16);
     return;
   }
 
@@ -181,7 +197,9 @@ function drawHeightProfile(profile) {
 
   ctx.fillStyle = "#FFFFFF";
   ctx.font = "12px Segoe UI, Arial";
-  ctx.fillText("Høydeprofil", 10, 16);
+  const gain = elevationGainM == null ? calculateElevationGain(profile) : Math.round(Number(elevationGainM));
+  const shownGain = Number.isFinite(gain) ? Math.max(0, gain) : 0;
+  ctx.fillText(`Høydeprofil • ${shownGain} m`, 10, 16);
 }
 
 function routeRequestBody() {
@@ -212,8 +230,9 @@ async function generateRoute() {
     }
     const payload = await response.json();
     drawRoute(payload.route || []);
-    drawHeightProfile(payload.profile || []);
-    updateHeader(payload.distance_km);
+    const elevationGain = payload.elevation_gain_m ?? calculateElevationGain(payload.profile || []);
+    drawHeightProfile(payload.profile || [], elevationGain);
+    updateHeader(payload.distance_km, elevationGain);
     state.lastRequestBody = body;
     downloadBtn.disabled = false;
   } catch (error) {
@@ -261,8 +280,8 @@ generateBtn.addEventListener("click", generateRoute);
 downloadBtn.addEventListener("click", downloadGpx);
 clearBtn.addEventListener("click", clearRoute);
 
-drawHeightProfile([]);
-updateHeader(null);
+drawHeightProfile([], 0);
+updateHeader(null, null);
 loadClinics().catch((err) => {
   alert(err.message || "Kunne ikke laste kartdata.");
 });
