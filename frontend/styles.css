@@ -28,7 +28,7 @@ body {
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto 1fr auto;
   gap: 14px;
   padding: 14px;
 }
@@ -203,6 +203,13 @@ button:disabled {
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--border);
+}
+
+.site-footer {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.65);
+  text-align: center;
+  padding-bottom: 6px;
 }
 
 .leaflet-popup-content-wrapper,
