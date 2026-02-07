@@ -99,6 +99,12 @@ def _cycle_cost(tour: list[int], dist: list[list[float]]) -> float:
     return sum(dist[tour[i]][tour[(i + 1) % n]] for i in range(n))
 
 
+def _path_cost(path: list[int], dist: list[list[float]]) -> float:
+    if len(path) < 2:
+        return 0.0
+    return sum(dist[path[i]][path[i + 1]] for i in range(len(path) - 1))
+
+
 def _tour_from_cycle_result(cycle: list[int]) -> list[int]:
     if not cycle:
         return []
@@ -136,6 +142,33 @@ def _two_opt_cycle(tour: list[int], dist: list[list[float]], max_rounds: int = 2
             for k in range(i + 1, n - 1):
                 cand = best[:i] + best[i : k + 1][::-1] + best[k + 1 :]
                 cand_cost = _cycle_cost(cand, dist)
+                if cand_cost + 1e-9 < best_cost:
+                    best = cand
+                    best_cost = cand_cost
+                    improved = True
+                    break
+            if improved:
+                break
+    return best
+
+
+def _two_opt_path(path: list[int], dist: list[list[float]], max_rounds: int = 200) -> list[int]:
+    if len(path) < 4:
+        return path[:]
+
+    best = path[:]
+    best_cost = _path_cost(best, dist)
+
+    improved = True
+    rounds = 0
+    n = len(best)
+    while improved and rounds < max_rounds:
+        improved = False
+        rounds += 1
+        for i in range(0, n - 2):
+            for k in range(i + 1, n - 1):
+                cand = best[:i] + best[i : k + 1][::-1] + best[k + 1 :]
+                cand_cost = _path_cost(cand, dist)
                 if cand_cost + 1e-9 < best_cost:
                     best = cand
                     best_cost = cand_cost
@@ -286,7 +319,7 @@ class RoutingService:
         if not points:
             return []
         if len(points) == 1:
-            return [points[0], points[0]]
+            return [points[0]]
 
         lats = [p[0] for p in points]
         lons = [p[1] for p in points]
@@ -338,9 +371,8 @@ class RoutingService:
         for cand in candidates:
             if len(cand) != n or len(set(cand)) != n:
                 continue
-            improved = _two_opt_cycle(cand, dist, max_rounds=two_opt_rounds)
-            improved = _rotate_tour_start(improved, 0)
-            cost = _cycle_cost(improved, dist)
+            improved = _two_opt_path(cand, dist, max_rounds=two_opt_rounds)
+            cost = _path_cost(improved, dist)
             if cost < best_cost:
                 best_cost = cost
                 best_tour = improved
@@ -349,8 +381,6 @@ class RoutingService:
             best_tour = _nearest_neighbor_tour(0, dist)
 
         ordered = [points[i] for i in best_tour]
-        if not same_point(ordered[-1], ordered[0]):
-            ordered.append(ordered[0])
         return ordered
 
     def _edge_length_m(self, graph, u: int, v: int) -> float:
@@ -479,7 +509,7 @@ class RoutingService:
     def _cache_key(
         self, clinic_ids: list[str], random_starts: int, two_opt_rounds: int
     ) -> tuple[Any, ...]:
-        return ("route-v3", tuple(sorted(set(clinic_ids))), random_starts, two_opt_rounds)
+        return ("route-v4", tuple(sorted(set(clinic_ids))), random_starts, two_opt_rounds)
 
     def _cache_key_hash(self, key: tuple[Any, ...]) -> str:
         raw = json.dumps(key, separators=(",", ":"), ensure_ascii=True)
