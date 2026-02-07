@@ -4,8 +4,6 @@ const clinicCountEl = document.getElementById("clinicCount");
 const totalKmEl = document.getElementById("totalKm");
 const elevationGainEl = document.getElementById("elevationGain");
 const closeLoopToggle = document.getElementById("closeLoopToggle");
-const selectAllBtn = document.getElementById("selectAllBtn");
-const selectOsloBtn = document.getElementById("selectOsloBtn");
 const generateBtn = document.getElementById("generateBtn");
 const downloadBtn = document.getElementById("downloadBtn");
 const clearBtn = document.getElementById("clearBtn");
@@ -93,34 +91,6 @@ function toggleClinic(clinicId) {
   downloadBtn.disabled = true;
 }
 
-function selectClinics(filterFn) {
-  if (state.activeStreamController) {
-    state.activeStreamController.abort();
-    state.activeStreamController = null;
-  }
-  state.selectedIds.clear();
-  for (const clinic of state.clinics) {
-    if (!filterFn || filterFn(clinic)) {
-      state.selectedIds.add(clinic.id);
-    }
-  }
-  for (const clinic of state.clinics) {
-    const marker = state.markerById.get(clinic.id);
-    if (marker) {
-      marker.setStyle(state.selectedIds.has(clinic.id) ? selectedMarkerStyle() : unselectedMarkerStyle());
-    }
-  }
-  if (state.routeLayer) {
-    map.removeLayer(state.routeLayer);
-    state.routeLayer = null;
-  }
-  state.previewActive = false;
-  state.lastRequestBody = null;
-  downloadBtn.disabled = true;
-  updateHeader(null, null);
-  drawHeightProfile([], 0);
-}
-
 function closeHoverPopup() {
   if (hoverPopup) {
     map.closePopup(hoverPopup);
@@ -170,8 +140,6 @@ async function loadClinics() {
   if (bounds.length > 0) {
     map.fitBounds(bounds, { padding: [28, 28] });
   }
-
-  selectClinics(() => true);
 }
 
 function clearRoute() {
@@ -496,10 +464,6 @@ async function downloadGpx() {
 }
 
 generateBtn.addEventListener("click", generateRoute);
-selectAllBtn.addEventListener("click", () => selectClinics(() => true));
-selectOsloBtn.addEventListener("click", () =>
-  selectClinics((clinic) => String(clinic.omrade || "").toLowerCase() === "oslo")
-);
 downloadBtn.addEventListener("click", downloadGpx);
 clearBtn.addEventListener("click", clearRoute);
 
