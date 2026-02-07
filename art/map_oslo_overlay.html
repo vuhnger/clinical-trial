@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dr.Dropin Coordinate Overlay - Oslo</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <style>
+    :root {
+      --bg: #2f3136;
+      --panel: #3a3d42;
+      --text: #f2f2f2;
+      --muted: #c6c8cc;
+      --route: #ffd84d;
+    }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+    .layout {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      height: 100%;
+      gap: 10px;
+      padding: 12px;
+      box-sizing: border-box;
+    }
+    .header {
+      background: var(--panel);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+    .title {
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    #map {
+      width: 100%;
+      height: 100%;
+      min-height: 680px;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .leaflet-popup-content-wrapper,
+    .leaflet-popup-tip {
+      background: #2b2d31;
+      color: #f4f4f5;
+    }
+    .leaflet-container a {
+      color: #ffe27a;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="header">
+      <div class="title">Dr.Dropin Coordinate Overlay - Oslo</div>
+      <div class="subtitle">Clinics: 22 | Basemap: CARTO Dark + OpenStreetMap</div>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+  <script>
+    const map = L.map('map', { zoomControl: true }).setView([59.92216656956521, 10.742423665217393], 12);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 20,
+      subdomains: 'abcd',
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+    }).addTo(map);
+
+    const clinics = [{"name": "Barcode: Allmennlege", "street": "Dronning Eufemias gate 9", "postal_code": "0191", "municipality": "Oslo", "lat": 59.90851019999999, "lon": 10.7540935}, {"name": "Bedriftshelsetjeneste", "street": "Sørkedalsveien 8", "postal_code": "0369", "municipality": "Oslo", "lat": 59.930461, "lon": 10.7115718}, {"name": "Bislett: Allmennlege, Fysioterapi, Kiropraktor", "street": "Dalsbergstien 18", "postal_code": "0170", "municipality": "Oslo", "lat": 59.9230239, "lon": 10.7358702}, {"name": "Bogstadveien: Allmennlege", "street": "Bogstadveien 30", "postal_code": "0355", "municipality": "Oslo", "lat": 59.92622, "lon": 10.721051100000068}, {"name": "Carl Berner: Allmennlege, Fysioterapeut, Kiropraktor, Psykolog", "street": "Dælenenggata 20", "postal_code": "0567", "municipality": "Oslo", "lat": 59.92761099999999, "lon": 10.7700901}, {"name": "Ensjø: Allmennlege, Hudlege, Gynekolog, Fysioterapeut, Kiropraktor", "street": "Ensjøveien 21", "postal_code": "0661", "municipality": "Oslo", "lat": 59.9135177, "lon": 10.7888314}, {"name": "Grünerløkka, Markveien: Fysioterapeut, Osteopat, Kiropraktor", "street": "Markveien 25", "postal_code": "0554", "municipality": "Oslo", "lat": 59.924685, "lon": 10.7569544}, {"name": "Grünerløkka: Allmennlege, Gynekolog", "street": "Thorvald Meyers gate 35", "postal_code": "0555", "municipality": "Oslo", "lat": 59.92520580000001, "lon": 10.758950899999945}, {"name": "Hegdehaugsveien: Hudlege, Gynekolog, Fysioterapeut, Kiropraktor, Psykolog, Øre-Nese-Hals", "street": "Oscars gate 20", "postal_code": "0352", "municipality": "Oslo", "lat": 59.92240899999999, "lon": 10.728087}, {"name": "Huitfeldts gate: Psykolog, Psykiater", "street": "Huitfeldtsgate 4A", "postal_code": "0253", "municipality": "Oslo", "lat": 59.914859, "lon": 10.7261571}, {"name": "Kirkegata: Psykolog", "street": "Kirkegata 1-3", "postal_code": "0153", "municipality": "Oslo", "lat": 59.9090583, "lon": 10.7422586}, {"name": "Kirkeveien: Hudlege, Gynekolog, FotoFinder, Gastro", "street": "Kirkeveien 60", "postal_code": "0368", "municipality": "Oslo", "lat": 59.92850559999999, "lon": 10.7143031}, {"name": "Majorstuen: Fysioterapi, Kiropraktor", "street": "Majorstuveien 30", "postal_code": "0367", "municipality": "Oslo", "lat": 59.9271708, "lon": 10.7156114}, {"name": "Nordstrand (Sæter Torg): Allmennlege, Hudlege, Psykolog, Gynekolog", "street": "Nordstrandveien 46", "postal_code": "1162", "municipality": "Oslo", "lat": 59.860833, "lon": 10.803191}, {"name": "Nydalen: Allmennlege", "street": "Nydalen allé 17", "postal_code": "0484", "municipality": "Oslo", "lat": 59.9478652, "lon": 10.7670005}, {"name": "Skøyen: Allmennlege, Gynekolog", "street": "Karenslyst Allé 32", "postal_code": "0278", "municipality": "Oslo", "lat": 59.9206742, "lon": 10.681992700000023}, {"name": "Stortorvet: Allmennlege", "street": "Møllergata 4", "postal_code": "0179", "municipality": "Oslo", "lat": 59.913769, "lon": 10.74582}, {"name": "Sørkedalsveien: Øyehelseklinikken", "street": "Sørkedalsveien 10D", "postal_code": "0369", "municipality": "Oslo", "lat": 59.93073, "lon": 10.70996}, {"name": "Torshov: Allmennlege", "street": "Torshovgata 7", "postal_code": "0476", "municipality": "Oslo", "lat": 59.9336984, "lon": 10.76400000000001}, {"name": "Ullevål Stadion: Allmennlege", "street": "Sognsveien 75c", "postal_code": "0855", "municipality": "Oslo", "lat": 59.9496954, "lon": 10.7335799}, {"name": "Vika Terrasse: Allmennlege, BHT", "street": "Ruseløkkveien 14", "postal_code": "0251", "municipality": "Oslo", "lat": 59.91327760000001, "lon": 10.7282118}, {"name": "Økern: Allmennlege, Psykolog, Fysioterapeut og Kiropraktor", "street": "Østre Aker vei 19", "postal_code": "0581", "municipality": "Oslo", "lat": 59.92759, "lon": 10.806586}];
+    const route = [[59.930461, 10.7115718], [59.93073, 10.70996], [59.92850559999999, 10.7143031], [59.9271708, 10.7156114], [59.92622, 10.721051100000068], [59.92240899999999, 10.728087], [59.914859, 10.7261571], [59.91327760000001, 10.7282118], [59.9230239, 10.7358702], [59.913769, 10.74582], [59.9090583, 10.7422586], [59.90851019999999, 10.7540935], [59.924685, 10.7569544], [59.92520580000001, 10.758950899999945], [59.9336984, 10.76400000000001], [59.92761099999999, 10.7700901], [59.9478652, 10.7670005], [59.9496954, 10.7335799], [59.9206742, 10.681992700000023], [59.9135177, 10.7888314], [59.92759, 10.806586], [59.860833, 10.803191]];
+
+    const logoIcon = L.icon({
+      iconUrl: 'data:image/svg+xml,%3Csvg%20width%3D%22200%22%20height%3D%22200%22%20viewBox%3D%220%200%20200%20200%22%20fill%3D%22none%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%20%3Cpath%20d%3D%22M193.949%2093.948C190.606%2093.948%20187.897%2096.6569%20187.897%2099.9997C187.897%20114.985%20175.698%20127.185%20160.714%20127.185H133.243C129.9%20127.185%20127.191%20129.894%20127.191%20133.237V160.711C127.191%20175.696%20114.992%20187.896%20100.008%20187.896C85.0235%20187.896%2072.8248%20175.696%2072.8248%20160.711V133.237C72.8248%20129.894%2070.1162%20127.185%2066.7733%20127.185C63.4308%20127.185%2060.7222%20129.894%2060.7222%20133.237V160.711C60.7222%20182.382%2078.3573%20200%20100.008%20200C121.678%20200%20139.294%20182.363%20139.294%20160.711V139.289H160.714C182.384%20139.289%20200%20121.652%20200%2099.9997C200%2096.6569%20197.291%2093.948%20193.949%2093.948Z%22%20fill%3D%22%2375D0C5%22/%3E%20%3Cpath%20d%3D%22M99.9921%200C78.3222%200%2060.706%2017.637%2060.706%2039.2893V60.7109H39.2861C17.6163%2060.7109%200%2078.3479%200%20100C0%20103.343%202.70865%20106.052%206.05131%20106.052C9.39399%20106.052%2012.1028%20103.343%2012.1028%20100C12.1028%2085.0146%2024.3016%2072.8147%2039.2861%2072.8147H66.7575C70.1%2072.8147%2072.8086%2070.1058%2072.8086%2066.763V39.2893C72.8086%2024.3036%2085.0077%2012.1038%2099.9921%2012.1038C114.977%2012.1038%20127.175%2024.3036%20127.175%2039.2893V66.763C127.175%2070.1058%20129.884%2072.8147%20133.227%2072.8147C136.569%2072.8147%20139.278%2070.1058%20139.278%2066.763V39.2893C139.278%2017.6177%20121.662%200%2099.9921%200Z%22%20fill%3D%22white%22/%3E%20%3C/svg%3E',
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+      popupAnchor: [0, -12],
+      className: 'drdropin-logo-marker'
+    });
+
+    const bounds = [];
+
+    const startMarker = L.circleMarker([59.930461, 10.7115718], {
+      radius: 8,
+      color: '#ffffff',
+      weight: 2,
+      fillColor: '#111111',
+      fillOpacity: 1
+    }).addTo(map);
+    startMarker.bindPopup('<b>Start</b><br/>Sørkedalsveien 8a, 0369 Oslo');
+    bounds.push([59.930461, 10.7115718]);
+
+    clinics.forEach((clinic) => {
+      const marker = L.marker([clinic.lat, clinic.lon], { icon: logoIcon }).addTo(map);
+      marker.bindPopup(
+        `<b>${clinic.name}</b><br/>${clinic.street}, ${clinic.postal_code} ${clinic.municipality}`
+      );
+      bounds.push([clinic.lat, clinic.lon]);
+    });
+
+    const routeLine = L.polyline(route, {
+      color: '#ffd84d',
+      weight: 4,
+      opacity: 0.95,
+      lineJoin: 'round'
+    }).addTo(map);
+
+    if (bounds.length > 1) {
+      map.fitBounds(bounds, { padding: [24, 24] });
+    }
+  </script>
+</body>
+</html>

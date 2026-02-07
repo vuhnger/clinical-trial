@@ -1,0 +1,2 @@
+name,street,postal_code,municipality,country,latitude,longitude,source
+Main office start point,Sørkedalsveien 8a,0369,Oslo,Norway,59.9304610,10.7115718,https://nominatim.openstreetmap.org/search?q=S%C3%B8rkedalsveien%208a%2C%200369%20Oslo%2C%20Norway&format=jsonv2&limit=1
