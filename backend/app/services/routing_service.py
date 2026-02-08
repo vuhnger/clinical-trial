@@ -384,7 +384,6 @@ class RoutingService:
         self._ensure_clinic_nodes(graph)
 
         nodes = list(self._clinic_node_by_id.values())
-        node_set = set(nodes)
         n = len(nodes)
 
         for i in range(n):
