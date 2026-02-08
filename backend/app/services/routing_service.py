@@ -50,10 +50,7 @@ def haversine_m(a: Coordinate, b: Coordinate) -> float:
     phi2 = math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
     dlambda = math.radians(lon2 - lon1)
-    aa = (
-        math.sin(dphi / 2) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-    )
+    aa = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
     return 2 * r * math.atan2(math.sqrt(aa), math.sqrt(1 - aa))
 
 
@@ -158,11 +155,16 @@ def _two_opt_cycle(tour: list[int], dist: list[list[float]], max_rounds: int = 2
         rounds += 1
         for i in range(1, n - 2):
             for k in range(i + 1, n - 1):
-                cand = best[:i] + best[i : k + 1][::-1] + best[k + 1 :]
-                cand_cost = _cycle_cost(cand, dist)
-                if cand_cost + 1e-9 < best_cost:
-                    best = cand
-                    best_cost = cand_cost
+                # O(1) delta evaluation: only check the 4 edges that change.
+                # Old edges: (i-1, i) and (k, k+1 mod n)
+                # New edges: (i-1, k) and (i, k+1 mod n)
+                a, b = best[i - 1], best[i]
+                c, d = best[k], best[(k + 1) % n]
+                old_cost = dist[a][b] + dist[c][d]
+                new_cost = dist[a][c] + dist[b][d]
+                if new_cost + 1e-9 < old_cost:
+                    best[i : k + 1] = best[i : k + 1][::-1]
+                    best_cost += new_cost - old_cost
                     improved = True
                     break
             if improved:
@@ -185,11 +187,36 @@ def _two_opt_path(path: list[int], dist: list[list[float]], max_rounds: int = 20
         rounds += 1
         for i in range(0, n - 2):
             for k in range(i + 1, n - 1):
-                cand = best[:i] + best[i : k + 1][::-1] + best[k + 1 :]
-                cand_cost = _path_cost(cand, dist)
-                if cand_cost + 1e-9 < best_cost:
-                    best = cand
-                    best_cost = cand_cost
+                # O(1) delta evaluation for open path.
+                # For interior reversals we compare the 4 affected edges.
+                # Edge cases at the boundaries (i==0 or k==n-1) are handled:
+                # when i==0: there's no edge before i, only edge (k, k+1) changes
+                # when k==n-1: there's no edge after k, only edge (i-1, i) changes
+                if i == 0 and k == n - 1:
+                    # Full reversal of entire path — never improves for symmetric dist.
+                    continue
+                elif i == 0:
+                    # Only edge (k, k+1) changes to (i, k+1)
+                    # old: best[k]->best[k+1], new: best[i]->best[k+1]
+                    c, d = best[k], best[k + 1]
+                    b = best[i]  # after reversal, best[i..k] reversed means pos k gets best[i]
+                    old_cost = dist[c][d]
+                    new_cost = dist[b][d]
+                elif k == n - 1:
+                    # Only edge (i-1, i) changes to (i-1, k)
+                    a, b = best[i - 1], best[i]
+                    c = best[k]
+                    old_cost = dist[a][b]
+                    new_cost = dist[a][c]
+                else:
+                    # Interior: 2 old edges become 2 new edges
+                    a, b = best[i - 1], best[i]
+                    c, d = best[k], best[k + 1]
+                    old_cost = dist[a][b] + dist[c][d]
+                    new_cost = dist[a][c] + dist[b][d]
+                if new_cost + 1e-9 < old_cost:
+                    best[i : k + 1] = best[i : k + 1][::-1]
+                    best_cost += new_cost - old_cost
                     improved = True
                     break
             if improved:
@@ -203,8 +230,8 @@ class RoutingService:
         data_dir: Path,
         output_dir: Path,
         *,
-        default_random_starts: int = 1800,
-        default_two_opt_rounds: int = 300,
+        default_random_starts: int = 10,
+        default_two_opt_rounds: int = 140,
         route_cache_max_entries: int = 256,
         max_random_starts: int = 1400,
         max_two_opt_rounds: int = 260,
@@ -345,6 +372,49 @@ class RoutingService:
             for clinic, node_id in zip(self._clinics, nodes):
                 self._clinic_node_by_id[clinic.id] = node_id
 
+    def precompute_distance_matrix(self) -> None:
+        """Precompute all-pairs shortest paths and distances for clinic nodes.
+
+        This populates _node_distance_cache and _node_path_cache so that
+        compute_route calls skip the distance matrix phase entirely.
+        """
+        import networkx as nx
+
+        graph = self._ensure_graph()
+        self._ensure_clinic_nodes(graph)
+
+        nodes = list(self._clinic_node_by_id.values())
+        n = len(nodes)
+
+        for i in range(n):
+            ni = nodes[i]
+            # Skip if we already have distances cached for this source to all other clinic nodes.
+            with self._routing_cache_lock:
+                all_cached = all(
+                    (ni, nodes[j]) in self._node_distance_cache for j in range(n) if j != i
+                )
+            if all_cached:
+                continue
+
+            try:
+                lengths, paths = nx.single_source_dijkstra(graph, ni, weight="length")
+            except Exception:
+                continue
+
+            with self._routing_cache_lock:
+                for j in range(n):
+                    if j == i:
+                        continue
+                    nj = nodes[j]
+                    d = float(lengths.get(nj, 0.0))
+                    if d > 0.0:
+                        self._node_distance_cache[(ni, nj)] = d
+                        self._node_distance_cache[(nj, ni)] = d
+                    if nj in paths:
+                        fwd = [int(node) for node in paths[nj]]
+                        self._node_path_cache[(ni, nj)] = fwd
+                        self._node_path_cache[(nj, ni)] = fwd[::-1]
+
     def _get_node_distance(self, graph, u: int, v: int) -> float:
         if u == v:
             return 0.0
@@ -393,6 +463,7 @@ class RoutingService:
         progress_callback: ProgressCallback | None = None,
     ) -> list[Coordinate]:
         import networkx as nx
+
         self._ensure_clinic_nodes(graph)
 
         seen_ids: set[str] = set()
@@ -428,9 +499,7 @@ class RoutingService:
             bootstrap_idx = [*bootstrap_tour, bootstrap_tour[0]]
             bootstrap_cost = _cycle_cost(bootstrap_tour, approx_dist)
         else:
-            bootstrap_tour = _two_opt_path(
-                bootstrap_tour, approx_dist, max_rounds=bootstrap_rounds
-            )
+            bootstrap_tour = _two_opt_path(bootstrap_tour, approx_dist, max_rounds=bootstrap_rounds)
             bootstrap_idx = bootstrap_tour[:]
             bootstrap_cost = _path_cost(bootstrap_tour, approx_dist)
         bootstrap_route = [points[i] for i in bootstrap_idx if 0 <= i < n]
@@ -458,75 +527,121 @@ class RoutingService:
         )
 
         # Start from approx distances; progressively replace rows with exact shortest-path lengths.
+        # First check if all distances are already cached (e.g. from prewarm).
         dist = [row[:] for row in approx_dist]
-        source_report_step = max(1, n // 8)
-        refine_preview_step = max(2, n // 4)
-        refine_rounds = max(4, min(14, two_opt_rounds // 12))
-        for i in range(n):
-            ni = snapped_nodes[i]
-            try:
-                lengths = nx.single_source_dijkstra_path_length(graph, ni, weight="length")
-            except Exception:
-                lengths = {}
+        all_cached = True
+        with self._routing_cache_lock:
+            for i in range(n):
+                ni = snapped_nodes[i]
+                for j in range(i + 1, n):
+                    nj = snapped_nodes[j]
+                    cached_d = self._node_distance_cache.get((ni, nj))
+                    if cached_d is not None:
+                        dist[i][j] = cached_d
+                        dist[j][i] = cached_d
+                    else:
+                        all_cached = False
 
-            for j in range(i + 1, n):
-                nj = snapped_nodes[j]
-                d = float(lengths.get(nj, 0.0))
-                if d <= 0.0 and ni != nj:
-                    d = approx_dist[i][j]
-                dist[i][j] = d
-                dist[j][i] = d
-                with self._routing_cache_lock:
-                    self._node_distance_cache[(ni, nj)] = d
-                    self._node_distance_cache[(nj, ni)] = d
-
-            should_report = i == 0 or i == n - 1 or (i + 1) % source_report_step == 0
-            if should_report:
-                _emit_progress(
-                    progress_callback,
-                    "status",
-                    {
-                        "phase": "distance_matrix",
-                        "message": f"Beregner veinett-distanser {i + 1}/{n}",
-                        "sources_done": i + 1,
-                        "sources_total": n,
-                        "progress_pct": round(((i + 1) / n) * 100.0, 1),
-                    },
-                )
-
-            should_preview_refine = (
-                i == 0 or i == n - 1 or (i + 1) % refine_preview_step == 0
+        if all_cached:
+            _emit_progress(
+                progress_callback,
+                "status",
+                {
+                    "phase": "distance_matrix",
+                    "message": "Veinett-distanser hentet fra cache",
+                    "sources_done": n,
+                    "sources_total": n,
+                    "progress_pct": 100.0,
+                },
             )
-            if should_preview_refine:
-                live_tour = _nearest_neighbor_tour(0, dist)
-                if close_loop:
-                    live_tour = _two_opt_cycle(
-                        live_tour, dist, max_rounds=refine_rounds
-                    )
-                    live_tour = _rotate_tour_start(live_tour, 0)
-                    live_idx = [*live_tour, live_tour[0]]
-                    live_cost = _cycle_cost(live_tour, dist)
+        else:
+            source_report_step = max(1, n // 8)
+            refine_preview_step = max(2, n // 4)
+            refine_rounds = max(4, min(14, two_opt_rounds // 12))
+
+            for i in range(n):
+                ni = snapped_nodes[i]
+                # Check if all distances from this source are already cached.
+                row_cached = True
+                with self._routing_cache_lock:
+                    for j in range(n):
+                        if j == i:
+                            continue
+                        if (ni, snapped_nodes[j]) not in self._node_distance_cache:
+                            row_cached = False
+                            break
+
+                if not row_cached:
+                    try:
+                        lengths, paths = nx.single_source_dijkstra(graph, ni, weight="length")
+                    except Exception:
+                        lengths, paths = {}, {}
+
+                    for j in range(i + 1, n):
+                        nj = snapped_nodes[j]
+                        d = float(lengths.get(nj, 0.0))
+                        if d <= 0.0 and ni != nj:
+                            d = approx_dist[i][j]
+                        dist[i][j] = d
+                        dist[j][i] = d
+                        with self._routing_cache_lock:
+                            self._node_distance_cache[(ni, nj)] = d
+                            self._node_distance_cache[(nj, ni)] = d
+                            # Cache the path so _expand_on_walk_graph can reuse it.
+                            if nj in paths:
+                                fwd = [int(node) for node in paths[nj]]
+                                self._node_path_cache[(ni, nj)] = fwd
+                                self._node_path_cache[(nj, ni)] = fwd[::-1]
                 else:
-                    live_tour = _two_opt_path(
-                        live_tour, dist, max_rounds=refine_rounds
-                    )
-                    live_idx = live_tour[:]
-                    live_cost = _path_cost(live_tour, dist)
-                live_route = [points[k] for k in live_idx if 0 <= k < n]
-                if len(live_route) >= 2:
+                    # Row is cached — populate dist matrix from cache.
+                    with self._routing_cache_lock:
+                        for j in range(i + 1, n):
+                            nj = snapped_nodes[j]
+                            d = self._node_distance_cache.get((ni, nj), approx_dist[i][j])
+                            dist[i][j] = d
+                            dist[j][i] = d
+
+                should_report = i == 0 or i == n - 1 or (i + 1) % source_report_step == 0
+                if should_report:
                     _emit_progress(
                         progress_callback,
-                        "preview",
+                        "status",
                         {
                             "phase": "distance_matrix",
-                            "kind": "refine",
+                            "message": f"Beregner veinett-distanser {i + 1}/{n}",
                             "sources_done": i + 1,
                             "sources_total": n,
                             "progress_pct": round(((i + 1) / n) * 100.0, 1),
-                            "distance_km": round(live_cost / 1000.0, 3),
-                            "route": [{"lat": lat, "lon": lon} for lat, lon in live_route],
                         },
                     )
+
+                should_preview_refine = i == 0 or i == n - 1 or (i + 1) % refine_preview_step == 0
+                if should_preview_refine:
+                    live_tour = _nearest_neighbor_tour(0, dist)
+                    if close_loop:
+                        live_tour = _two_opt_cycle(live_tour, dist, max_rounds=refine_rounds)
+                        live_tour = _rotate_tour_start(live_tour, 0)
+                        live_idx = [*live_tour, live_tour[0]]
+                        live_cost = _cycle_cost(live_tour, dist)
+                    else:
+                        live_tour = _two_opt_path(live_tour, dist, max_rounds=refine_rounds)
+                        live_idx = live_tour[:]
+                        live_cost = _path_cost(live_tour, dist)
+                    live_route = [points[k] for k in live_idx if 0 <= k < n]
+                    if len(live_route) >= 2:
+                        _emit_progress(
+                            progress_callback,
+                            "preview",
+                            {
+                                "phase": "distance_matrix",
+                                "kind": "refine",
+                                "sources_done": i + 1,
+                                "sources_total": n,
+                                "progress_pct": round(((i + 1) / n) * 100.0, 1),
+                                "distance_km": round(live_cost / 1000.0, 3),
+                                "route": [{"lat": lat, "lon": lon} for lat, lon in live_route],
+                            },
+                        )
 
         complete = nx.Graph()
         for i in range(n):
@@ -1033,9 +1148,7 @@ class RoutingService:
                 {"phase": "cache_hit", "layer": "disk", "message": "Rute funnet i disk-cache"},
             )
             self._set_cached_memory(key, cached)
-            self._register_cache_access(
-                key, len(canonical_ids), rs, tor, "disk", force_flush=False
-            )
+            self._register_cache_access(key, len(canonical_ids), rs, tor, "disk", force_flush=False)
             return cached
 
         _emit_progress(

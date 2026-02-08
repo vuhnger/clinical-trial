@@ -16,7 +16,7 @@ from backend.app.services.routing_service import RoutingService
 
 DATA_DIR = Path(os.getenv("DATA_DIR", Path(__file__).resolve().parents[2] / "data"))
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", Path(__file__).resolve().parents[2] / "output"))
-DEFAULT_RANDOM_STARTS = int(os.getenv("ROUTE_RANDOM_STARTS", "900"))
+DEFAULT_RANDOM_STARTS = int(os.getenv("ROUTE_RANDOM_STARTS", "10"))
 DEFAULT_TWO_OPT_ROUNDS = int(os.getenv("ROUTE_TWO_OPT_ROUNDS", "140"))
 ROUTE_CACHE_MAX_ENTRIES = int(os.getenv("ROUTE_CACHE_MAX_ENTRIES", "256"))
 MAX_RANDOM_STARTS = int(os.getenv("ROUTE_MAX_RANDOM_STARTS", "1400"))
@@ -50,6 +50,7 @@ def _prewarm() -> None:
     try:
         graph = service._ensure_graph()
         service._ensure_clinic_nodes(graph)
+        service.precompute_distance_matrix()
         _prewarm_error = None
         _prewarm_done = True
     except Exception as exc:
